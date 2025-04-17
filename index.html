@@ -52,26 +52,12 @@
       #sidebar { width:100%; border-top:1px solid #ddd }
     }
 
-    /* ビデオ表示 */
-    #videos {
-      display: flex;
-      padding: 8px;
-      background: #000;
-    }
-    #videos video {
-      width: 120px;
-      height: 90px;
-      margin-right: 8px;
-      background: #222;
-    }
-
     /* メッセージエリア */
     #container {
       display: flex; flex-direction: column; flex: 1;
     }
     #chatMessages {
       flex: 1; padding: 16px; overflow-y: auto; background: #fafafa;
-      display: flex; flex-direction: column;
     }
     .msg {
       max-width: 70%; margin-bottom: 12px; padding: 8px 12px;
@@ -82,7 +68,7 @@
       background: #dcf8c6; align-self: flex-end; border-top-right-radius:2px;
     }
     .msg.other {
-      background: #ececec; /* 他人メッセージはグレー */
+      background: #ccffcc;  /* 自分以外のメッセージを薄緑に */
       align-self: flex-start; border-top-left-radius:2px;
     }
     .msg .meta {
@@ -132,11 +118,6 @@
   <!-- STEP3: チャット画面 -->
   <div id="chatApp">
     <div id="container">
-      <!-- カメラ映像 -->
-      <div id="videos">
-        <video id="localVideo" autoplay muted playsinline></video>
-        <video id="remoteVideo" autoplay playsinline></video>
-      </div>
       <div id="chatMessages"></div>
       <div id="chatInput">
         <input id="chatText" placeholder="メッセージを入力…" disabled />
@@ -158,21 +139,18 @@
     let mode, roomName, userName, userId;
     let usersRef, messagesRef;
     const shown = new Set();
-
-    const welcome    = document.getElementById('welcome');
-    const form       = document.getElementById('form');
-    const chatApp    = document.getElementById('chatApp');
-    const formTitle  = document.getElementById('formTitle');
-    const nameIn     = document.getElementById('nameInput');
-    const roomIn     = document.getElementById('roomInput');
-    const enterBtn   = document.getElementById('enterBtn');
-    const chatArea   = document.getElementById('chatMessages');
-    const input      = document.getElementById('chatText');
-    const sendBtn    = document.getElementById('sendBtn');
-    const partList   = document.getElementById('participants');
-    const roomTitle  = document.getElementById('roomNameTitle');
-    const localVid   = document.getElementById('localVideo');
-    const remoteVid  = document.getElementById('remoteVideo');
+    const welcome   = document.getElementById('welcome');
+    const form      = document.getElementById('form');
+    const chatApp   = document.getElementById('chatApp');
+    const formTitle = document.getElementById('formTitle');
+    const nameIn    = document.getElementById('nameInput');
+    const roomIn    = document.getElementById('roomInput');
+    const enterBtn  = document.getElementById('enterBtn');
+    const chatArea  = document.getElementById('chatMessages');
+    const input     = document.getElementById('chatText');
+    const sendBtn   = document.getElementById('sendBtn');
+    const partList  = document.getElementById('participants');
+    const roomTitle = document.getElementById('roomNameTitle');
 
     // STEP1
     document.getElementById('createBtn').onclick = () => openForm('create');
@@ -194,34 +172,37 @@
     };
 
     // STEP3
-    async function startChat() {
+    function startChat() {
       form.style.display    = 'none';
       chatApp.style.display = 'flex';
 
-      const roomRef = gun.get('rooms').get(roomName);
-      usersRef      = roomRef.get('users');
-      messagesRef   = roomRef.get('messages');
+      const roomRef      = gun.get('rooms').get(roomName);
+      usersRef           = roomRef.get('users');
+      messagesRef        = roomRef.get('messages');
 
-      // 参加者同期
-      usersRef.map().on((name,id) => {
-        const el = document.getElementById('u-'+id);
+      // 参加者同期（先に購読）
+      usersRef.map().on((name, id) => {
+        const el = document.getElementById('u-' + id);
         if (name) {
           if (!el) {
             const li = document.createElement('li');
-            li.id = 'u-'+id; li.textContent = name;
+            li.id = 'u-' + id;
+            li.textContent = name;
             partList.appendChild(li);
           }
-        } else if (el) el.remove();
+        } else if (el) {
+          el.remove();
+        }
       });
 
-      // 自分を参加者登録
+      // 自分を参加者リストに登録
       usersRef.get(userId).put(userName);
 
       // ルーム名表示
       roomTitle.textContent = 'ルーム: ' + roomName;
 
-      // チャット同期
-      messagesRef.map().on((msg,id) => {
+      // メッセージ同期
+      messagesRef.map().on((msg, id) => {
         if (!msg || shown.has(id)) return;
         shown.add(id);
         const d = document.createElement('div');
@@ -235,17 +216,6 @@
       input.disabled   = false;
       sendBtn.disabled = false;
 
-      // カメラ許可確認
-      if (confirm('カメラを共有しますか？')) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-          localVid.srcObject = stream;
-          setupWebRTC(stream);
-        } catch (e) {
-          console.error('カメラ取得失敗', e);
-        }
-      }
-
       // メッセージ送信
       function send() {
         const txt = input.value.trim();
@@ -254,55 +224,11 @@
         input.value = '';
       }
       sendBtn.onclick = send;
-      input.addEventListener('keypress', e => { if (e.key==='Enter') send(); });
+      input.addEventListener('keypress', e => { if (e.key === 'Enter') send(); });
 
-      // 離脱時解除
+      // 離脱時に参加解除
       window.addEventListener('beforeunload', () => {
         usersRef.get(userId).put(null);
-      });
-    }
-
-    // WebRTC シグナリング経路は Gun.js
-    function setupWebRTC(stream) {
-      const pc = new RTCPeerConnection();
-      // 自分の映像を送信
-      stream.getTracks().forEach(t => pc.addTrack(t, stream));
-
-      const sig = gun.get('webrtc').get(roomName);
-      pc.onicecandidate = e => {
-        if (e.candidate) {
-          sig.get('candidates').set({ candidate: e.candidate.toJSON(), from: userId });
-        }
-      };
-      pc.ontrack = e => {
-        remoteVid.srcObject = e.streams[0];
-      };
-
-      // offer/answer 交換
-      if (mode === 'create') {
-        pc.onnegotiationneeded = async () => {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          sig.get('offer').put({ sdp: pc.localDescription, from: userId });
-        };
-      }
-      // 受信した offer に対して answer
-      sig.get('offer').on(async data => {
-        if (!data || data.from === userId) return;
-        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        sig.get('answer').put({ sdp: pc.localDescription, from: userId });
-      });
-      // 受信した answer を設定
-      sig.get('answer').on(async data => {
-        if (!data || data.from === userId) return;
-        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-      });
-      // ICE candidates
-      sig.get('candidates').map().on(data => {
-        if (!data || data.from === userId) return;
-        pc.addIceCandidate(new RTCIceCandidate(data.candidate));
       });
     }
   </script>
