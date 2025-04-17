@@ -3,30 +3,31 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>先生に質問チャット＋ビデオ</title>
+  <title>先生に質問チャット</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0 }
-    body { font-family: sans-serif; height: 100vh; display: flex; flex-direction: column }
+    body { font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
 
     /* STEP1: Welcome */
     #welcome {
       flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
       background: #f5f5f5;
     }
-    #welcome h2 { margin-bottom: 1rem }
+    #welcome h2 { margin-bottom: 1rem; }
     .btn {
       width: 120px; padding: 0.8rem; margin: 0.5rem;
-      border: none; border-radius: 6px; font-size: 1rem; color: #fff; cursor: pointer;
+      border: none; border-radius: 6px; font-size: 1rem; color: #fff;
+      cursor: pointer;
     }
-    #createBtn { background: #00c300 }
-    #joinBtn   { background: #0078ff }
+    #createBtn { background: #00c300; }
+    #joinBtn   { background: #0078ff; }
 
     /* STEP2: Form */
     #form {
       display: none; flex: 1; flex-direction: column;
       align-items: center; justify-content: center; background: #fafafa;
     }
-    #form h2 { margin-bottom: 1rem }
+    #form h2 { margin-bottom: 1rem; }
     #form input {
       width: 80%; max-width: 300px; padding: 0.8rem; margin: 0.5rem 0;
       border: 1px solid #ccc; border-radius: 4px; font-size: 1rem;
@@ -51,12 +52,17 @@
       #sidebar { width:100%; border-top:1px solid #ddd }
     }
 
-    /* Video container */
-    #videoContainer {
-      display: flex; justify-content: center; padding: 8px; background: #fff; border-bottom: 1px solid #ddd;
+    /* ビデオ表示 */
+    #videos {
+      display: flex;
+      padding: 8px;
+      background: #000;
     }
-    #videoContainer video {
-      width: 45%; max-width: 200px; margin: 0 5px; border-radius: 8px; background: #000;
+    #videos video {
+      width: 120px;
+      height: 90px;
+      margin-right: 8px;
+      background: #222;
     }
 
     /* メッセージエリア */
@@ -65,17 +71,19 @@
     }
     #chatMessages {
       flex: 1; padding: 16px; overflow-y: auto; background: #fafafa;
+      display: flex; flex-direction: column;
     }
     .msg {
       max-width: 70%; margin-bottom: 12px; padding: 8px 12px;
       border-radius: 12px; line-height:1.4; word-wrap:break-word;
-      font-size:14px;
+      position: relative; font-size:14px;
     }
     .msg.self {
-      background: #dcf8c6; align-self: flex-end; border-top-right-radius: 2px;
+      background: #dcf8c6; align-self: flex-end; border-top-right-radius:2px;
     }
     .msg.other {
-      background: #e5e5ea; align-self: flex-start; border-top-left-radius: 2px;
+      background: #ececec; /* 他人メッセージはグレー */
+      align-self: flex-start; border-top-left-radius:2px;
     }
     .msg .meta {
       display:block; font-size:11px; color:#555; margin-bottom:4px;
@@ -113,7 +121,7 @@
     <button class="btn" id="joinBtn">ルームに参加</button>
   </div>
 
-  <!-- STEP2: 名前 & ルーム名入力 -->
+  <!-- STEP2: 名前 & ルーム名入力フォーム -->
   <div id="form">
     <h2 id="formTitle"></h2>
     <input type="text" id="nameInput" placeholder="あなたの名前" />
@@ -121,10 +129,11 @@
     <button id="enterBtn">入室</button>
   </div>
 
-  <!-- STEP3: チャット＋ビデオ -->
+  <!-- STEP3: チャット画面 -->
   <div id="chatApp">
     <div id="container">
-      <div id="videoContainer">
+      <!-- カメラ映像 -->
+      <div id="videos">
         <video id="localVideo" autoplay muted playsinline></video>
         <video id="remoteVideo" autoplay playsinline></video>
       </div>
@@ -141,31 +150,29 @@
     </div>
   </div>
 
-  <!-- Gun.js + SimplePeer -->
+  <!-- Gun.js -->
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/simple-peer/simplepeer.min.js"></script>
   <script>
     const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
 
     let mode, roomName, userName, userId;
-    let usersRef, messagesRef, signalRef;
-    const shownMsgs = new Set();
+    let usersRef, messagesRef;
+    const shown = new Set();
 
-    // DOM
-    const welcome  = document.getElementById('welcome');
-    const form     = document.getElementById('form');
-    const chatApp  = document.getElementById('chatApp');
-    const formTitle= document.getElementById('formTitle');
-    const nameIn   = document.getElementById('nameInput');
-    const roomIn   = document.getElementById('roomInput');
-    const enterBtn = document.getElementById('enterBtn');
-    const chatArea = document.getElementById('chatMessages');
-    const input    = document.getElementById('chatText');
-    const sendBtn  = document.getElementById('sendBtn');
-    const partList = document.getElementById('participants');
-    const roomTitle= document.getElementById('roomNameTitle');
-    const localV   = document.getElementById('localVideo');
-    const remoteV  = document.getElementById('remoteVideo');
+    const welcome    = document.getElementById('welcome');
+    const form       = document.getElementById('form');
+    const chatApp    = document.getElementById('chatApp');
+    const formTitle  = document.getElementById('formTitle');
+    const nameIn     = document.getElementById('nameInput');
+    const roomIn     = document.getElementById('roomInput');
+    const enterBtn   = document.getElementById('enterBtn');
+    const chatArea   = document.getElementById('chatMessages');
+    const input      = document.getElementById('chatText');
+    const sendBtn    = document.getElementById('sendBtn');
+    const partList   = document.getElementById('participants');
+    const roomTitle  = document.getElementById('roomNameTitle');
+    const localVid   = document.getElementById('localVideo');
+    const remoteVid  = document.getElementById('remoteVideo');
 
     // STEP1
     document.getElementById('createBtn').onclick = () => openForm('create');
@@ -190,92 +197,112 @@
     async function startChat() {
       form.style.display    = 'none';
       chatApp.style.display = 'flex';
-      roomTitle.textContent = 'ルーム: ' + roomName;
 
-      // Gun.js refs
       const roomRef = gun.get('rooms').get(roomName);
       usersRef      = roomRef.get('users');
       messagesRef   = roomRef.get('messages');
-      signalRef     = roomRef.get('signals');
 
-      // participants list
-      usersRef.on('value', snap => {
-        const users = snap.val() || {};
-        partList.innerHTML = '';
-        Object.values(users).forEach(name => {
-          if (name) {
+      // 参加者同期
+      usersRef.map().on((name,id) => {
+        const el = document.getElementById('u-'+id);
+        if (name) {
+          if (!el) {
             const li = document.createElement('li');
-            li.textContent = name;
+            li.id = 'u-'+id; li.textContent = name;
             partList.appendChild(li);
           }
-        });
+        } else if (el) el.remove();
       });
-      // add self
+
+      // 自分を参加者登録
       usersRef.get(userId).put(userName);
 
-      // chat messages + notifications
-      Notification.requestPermission();
-      messagesRef.map().on((msg, id) => {
-        if (!msg || shownMsgs.has(id)) return;
-        shownMsgs.add(id);
-        const div = document.createElement('div');
-        div.className = 'msg ' + (msg.name === userName ? 'self' : 'other');
-        div.innerHTML = `<span class="meta">${msg.name} ${new Date(msg.timestamp).toLocaleTimeString()}</span>${msg.text}`;
-        chatArea.appendChild(div);
-        chatArea.scrollTop = chatArea.scrollHeight;
+      // ルーム名表示
+      roomTitle.textContent = 'ルーム: ' + roomName;
 
-        // notification for others
-        if (msg.name !== userName && document.hidden && Notification.permission === 'granted') {
-          new Notification(`${msg.name} からメッセージ`, { body: msg.text });
-        }
+      // チャット同期
+      messagesRef.map().on((msg,id) => {
+        if (!msg || shown.has(id)) return;
+        shown.add(id);
+        const d = document.createElement('div');
+        d.className = 'msg ' + (msg.name === userName ? 'self' : 'other');
+        d.innerHTML = `<span class="meta">${msg.name} ${new Date(msg.timestamp).toLocaleTimeString()}</span>${msg.text}`;
+        chatArea.appendChild(d);
+        chatArea.scrollTop = chatArea.scrollHeight;
       });
 
-      // enable input
+      // UI 有効化
       input.disabled   = false;
       sendBtn.disabled = false;
-      sendBtn.onclick  = send;
-      input.addEventListener('keypress', e => { if (e.key === 'Enter') send(); });
 
+      // カメラ許可確認
+      if (confirm('カメラを共有しますか？')) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          localVid.srcObject = stream;
+          setupWebRTC(stream);
+        } catch (e) {
+          console.error('カメラ取得失敗', e);
+        }
+      }
+
+      // メッセージ送信
       function send() {
-        const t = input.value.trim();
-        if (!t) return;
-        messagesRef.set({ name: userName, text: t, timestamp: Date.now() });
+        const txt = input.value.trim();
+        if (!txt) return;
+        messagesRef.set({ name: userName, text: txt, timestamp: Date.now() });
         input.value = '';
       }
+      sendBtn.onclick = send;
+      input.addEventListener('keypress', e => { if (e.key==='Enter') send(); });
 
-      // --- WebRTC Video via SimplePeer ---
-      if (confirm('カメラ共有の許可を求めます。よろしいですか？')) {
-        try {
-          const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-          localV.srcObject = localStream;
-          const peer = new SimplePeer({
-            initiator: mode === 'create',
-            trickle: false,
-            stream: localStream
-          });
-          // send our signals
-          peer.on('signal', data => {
-            signalRef.set({ id: userId, signal: data });
-          });
-          // receive signals
-          signalRef.map().on(msg => {
-            if (!msg || msg.id === userId) return;
-            peer.signal(msg.signal);
-          });
-          // when remote stream arrives
-          peer.on('stream', stream => {
-            remoteV.srcObject = stream;
-          });
-        } catch (err) {
-          alert('カメラ取得に失敗しました: ' + err.message);
-        }
-      } else {
-        alert('カメラ共有をキャンセルしました。');
-      }
-
-      // cleanup on exit
+      // 離脱時解除
       window.addEventListener('beforeunload', () => {
         usersRef.get(userId).put(null);
+      });
+    }
+
+    // WebRTC シグナリング経路は Gun.js
+    function setupWebRTC(stream) {
+      const pc = new RTCPeerConnection();
+      // 自分の映像を送信
+      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+      const sig = gun.get('webrtc').get(roomName);
+      pc.onicecandidate = e => {
+        if (e.candidate) {
+          sig.get('candidates').set({ candidate: e.candidate.toJSON(), from: userId });
+        }
+      };
+      pc.ontrack = e => {
+        remoteVid.srcObject = e.streams[0];
+      };
+
+      // offer/answer 交換
+      if (mode === 'create') {
+        pc.onnegotiationneeded = async () => {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          sig.get('offer').put({ sdp: pc.localDescription, from: userId });
+        };
+      }
+      // 受信した offer に対して answer
+      sig.get('offer').on(async data => {
+        if (!data || data.from === userId) return;
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sig.get('answer').put({ sdp: pc.localDescription, from: userId });
+      });
+      // 受信した answer を設定
+      sig.get('answer').on(async data => {
+        if (!data || data.from === userId) return;
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      });
+      // ICE candidates
+      sig.get('candidates').map().on(data => {
+        if (!data || data.from === userId) return;
+        pc.addIceCandidate(new RTCIceCandidate(data.candidate));
       });
     }
   </script>
