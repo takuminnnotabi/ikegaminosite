@@ -190,6 +190,9 @@
 
     // STEP3
     function startChat() {
+      // shownセットのクリア（再参加時の重複防止）
+      shown.clear();
+      // UI切り替え
       form.style.display    = 'none';
       chatApp.style.display = 'flex';
 
@@ -253,10 +256,24 @@
 
       // ルーム削除ボタン
       deleteBtn.onclick = () => {
+        // 参加者を全員削除
+        usersRef.map().once((name, id) => {
+          usersRef.get(id).put(null);
+        });
+        // メッセージを全件削除
+        messagesRef.map().once((msg, id) => {
+          messagesRef.get(id).put(null);
+        });
+        // ルームノード全体を削除
         gun.get('rooms').get(roomName).put(null);
-        // 初期画面に戻す
+        // UIをリセット
         chatApp.style.display = 'none';
         welcome.style.display = 'flex';
+        partList.innerHTML = '';
+        chatArea.innerHTML = '';
+        shown.clear();
+        input.disabled = true;
+        sendBtn.disabled = true;
       };
 
       // 離脱時に参加解除
