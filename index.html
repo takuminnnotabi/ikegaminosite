@@ -3,346 +3,200 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ドキュメント＋質問＋チャットデモ</title>
+  <title>先生に質問チャット（見た目カスタム版）</title>
   <style>
-    /* リセット＆レイアウト */
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: sans-serif;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      background: #f5f5f5;
-    }
-    .hidden { display: none; }
+    body { font-family: sans-serif; display: flex; height: 100vh; }
 
-    /* STEP1: はじめに */
-    #welcome {
-      margin: auto;
-      text-align: center;
-    }
-    .btn {
-      cursor: pointer;
-      padding: 0.8rem 1.2rem;
-      margin: 0.5rem;
-      border: none;
-      border-radius: 6px;
-      font-size: 1rem;
-      color: #fff;
-    }
-    #createBtn { background: #00c300; }
-    #joinBtn   { background: #0078ff; }
-
-    /* STEP2: 入力フォーム */
-    #form {
-      margin: auto;
-      width: 90%;
-      max-width: 360px;
-      text-align: left;
-    }
-    #form label {
-      display: block;
-      margin-bottom: 0.4rem;
-      font-size: 0.9rem;
-    }
-    #form input {
-      width: 100%;
-      padding: 0.8rem;
-      margin-bottom: 1rem;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      font-size: 1rem;
-    }
-    #enterBtn {
-      width: 100%;
-      background: #00c300;
-      color: #fff;
-      padding: 0.8rem;
-      border: none;
-      border-radius: 6px;
-      font-size: 1rem;
-    }
-
-    /* STEP3: エディタ＋サイドバー */
-    #app {
-      flex: 1;
-      display: none;
-      overflow: hidden;
-    }
+    /* 左側：チャットエリア全体 */
     #container {
       flex: 1;
       display: flex;
       flex-direction: column;
     }
-    #toolbar {
-      background: #f0f0f0;
-      padding: 8px;
-      border-bottom: 1px solid #ccc;
-      display: flex;
-      justify-content: flex-end;
-    }
-    #toolbar button {
-      padding: 0.6rem 1rem;
-      border: none;
-      border-radius: 4px;
-      background: #0078ff;
-      color: #fff;
-      font-size: 0.9rem;
-      cursor: pointer;
-    }
-    #doc {
+
+    /* ツールバー部分は非表示（デモには不要のため） */
+    #toolbar { display: none; }
+
+    /* チャットメッセージ領域 */
+    #chatMessages {
       flex: 1;
       padding: 16px;
-      overflow: auto;
-      background: #fff;
-    }
-    #doc span[data-qid] {
-      background-color: #ffeb3b;
-      cursor: pointer;
-    }
-    #sidebar {
-      width: 320px;
-      border-left: 1px solid #ddd;
-      display: flex;
-      flex-direction: column;
+      overflow-y: auto;
       background: #fafafa;
-      overflow: auto;
+      border-bottom: 1px solid #ddd;
     }
-    #sidebar h2 {
-      margin: 16px;
-      font-size: 1.1rem;
+    /* 吹き出し */
+    .msg {
+      max-width: 70%;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      word-wrap: break-word;
+      line-height: 1.4;
+      position: relative;
+      font-size: 14px;
     }
-    #participants, #questions, #chatMessages {
-      list-style: none;
-      padding: 0 16px;
-      margin-bottom: 16px;
-      flex-shrink: 0;
+    .msg.self {
+      background: #dcf8c6;
+      align-self: flex-end;
+      border-top-right-radius: 2px;
     }
-    #participants li, .question, #chatMessages div {
-      padding: 4px 0;
-      border-bottom: 1px solid #eee;
-      font-size: 0.9rem;
+    .msg.other {
+      background: #fff;
+      align-self: flex-start;
+      border-top-left-radius: 2px;
     }
-    .question {
-      padding: 8px 0;
+    .msg .meta {
+      display: block;
+      font-size: 11px;
+      color: #555;
+      margin-bottom: 4px;
     }
+
+    /* 入力欄 */
     #chatInput {
       display: flex;
       padding: 8px;
-      border-top: 1px solid #ccc;
       background: #fff;
+      border-top: 1px solid #ccc;
     }
-    #chatText {
+    #chatInput input {
       flex: 1;
-      padding: 6px 8px;
+      padding: 8px;
       border: 1px solid #ccc;
       border-radius: 4px;
-      font-size: 0.9rem;
+      font-size: 14px;
     }
-    #sendBtn {
+    #chatInput button {
+      width: 60px;
       margin-left: 8px;
-      padding: 0 12px;
-      background: #00c300;
+      background: #00aaff;
+      color: #fff;
       border: none;
       border-radius: 4px;
-      color: #fff;
-      font-size: 0.9rem;
+      font-size: 14px;
       cursor: pointer;
     }
 
-    /* PC/スマホ対応 */
-    @media (max-width: 767px) {
-      #app { display: flex; flex-direction: column; }
-      #container { flex: 1; }
-      #sidebar {
-        width: 100%;
-        height: 50%;
-        border-left: none;
-        border-top: 1px solid #ddd;
-      }
+    /* 右側：参加者リスト */
+    #sidebar {
+      width: 240px;
+      border-left: 1px solid #ddd;
+      background: #f9f9f9;
+      padding: 16px;
+      overflow-y: auto;
     }
-    @media (min-width: 768px) {
-      #app { display: flex; }
-      #container { flex: 1; }
+    #sidebar h2 {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    #participants {
+      list-style: none;
+    }
+    #participants li {
+      padding: 6px 0;
+      border-bottom: 1px solid #eee;
+      font-size: 14px;
+    }
+
+    /* レイアウト：PCは横並び、スマホは縦積み */
+    @media (max-width: 699px) {
+      body { flex-direction: column; }
+      #sidebar { width: 100%; border-left: none; border-top: 1px solid #ddd; }
     }
   </style>
 </head>
 <body>
 
-  <!-- STEP1 -->
-  <div id="welcome">
-    <h2>はじめに</h2>
-    <button class="btn" id="createBtn">ルームを作成</button>
-    <button class="btn" id="joinBtn">ルームに参加</button>
-  </div>
-
-  <!-- STEP2 -->
-  <div id="form" class="hidden">
-    <h2 id="formTitle"></h2>
-    <label>あなたの名前<input type="text" id="nameInput" placeholder="例: Taro"></label>
-    <label>ルーム名<input type="text" id="roomInput" placeholder="例: room‑1234"></label>
-    <button id="enterBtn">入室</button>
-  </div>
-
-  <!-- STEP3 -->
-  <div id="app">
-    <div id="container">
-      <div id="toolbar">
-        <button id="askBtn">先生に質問する</button>
-      </div>
-      <div id="doc" contenteditable="true">
-        <h1>ここにドキュメント本文を書いてください</h1>
-        <p>テキストを選択して「先生に質問する」を押すと、質問を挿入できます。</p>
-      </div>
-    </div>
-    <div id="sidebar">
-      <h2>参加者</h2>
-      <ul id="participants"></ul>
-      <h2>質問一覧</h2>
-      <div id="questions"></div>
-      <h2>チャット</h2>
-      <div id="chatMessages"></div>
-      <div id="chatInput">
-        <input type="text" id="chatText" placeholder="メッセージを入力…" disabled />
-        <button id="sendBtn" disabled>送信</button>
-      </div>
+  <!-- チャット＋入力エリア -->
+  <div id="container">
+    <div id="chatMessages"></div>
+    <div id="chatInput">
+      <input id="chatText" placeholder="メッセージを入力…" disabled />
+      <button id="sendBtn" disabled>送信</button>
     </div>
   </div>
 
-  <!-- Gun.js CDN -->
+  <!-- 参加者リスト -->
+  <div id="sidebar">
+    <h2>参加者</h2>
+    <ul id="participants"></ul>
+  </div>
+
+  <!-- Gun.js -->
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
   <script>
-    // --- 初期画面制御 ---
-    let mode, roomName, userName, userId;
-    const welcome  = document.getElementById('welcome');
-    const form     = document.getElementById('form');
-    const app      = document.getElementById('app');
-    const formTitle= document.getElementById('formTitle');
-    const createBtn= document.getElementById('createBtn');
-    const joinBtn  = document.getElementById('joinBtn');
-    const enterBtn = document.getElementById('enterBtn');
+    const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
 
-    createBtn.onclick = ()=> openForm('create');
-    joinBtn.onclick   = ()=> openForm('join');
-    function openForm(sel){
-      mode = sel;
-      welcome.classList.add('hidden');
-      form.classList.remove('hidden');
-      formTitle.textContent = sel==='create' ? 'ルームを作成' : 'ルームに参加';
-      enterBtn.textContent  = '入室';
-    }
-    enterBtn.onclick = ()=>{
-      userName = document.getElementById('nameInput').value.trim();
-      roomName = document.getElementById('roomInput').value.trim();
-      if(!userName||!roomName) return alert('名前とルーム名を入力してください');
-      userId = Date.now().toString()+Math.random().toString(36).slice(2,6);
-      startApp();
-    };
+    let roomName, userName, userId;
+    let usersRef, messagesRef;
+    const shown = new Set();
 
-    // --- 質問機能 ---
-    const questions = [];
-    function updateSidebar(){
-      const qc = document.getElementById('questions');
-      qc.innerHTML = '';
-      questions.forEach(q=>{
-        const d = document.createElement('div');
-        d.classList.add('question');
-        d.innerHTML = `<strong>Q${q.id}：</strong>${q.text}<br><em>（"${q.selection}" を参照）</em>`;
-        qc.appendChild(d);
-      });
-    }
-    function askQuestion(){
-      const sel = window.getSelection();
-      if(!sel.rangeCount||!sel.toString().trim()){
-        return alert('まず本文中のテキストを選択してください');
-      }
-      const txt = prompt('先生への質問を入力してください：');
-      if(!txt) return;
-      const range = sel.getRangeAt(0);
-      const span  = document.createElement('span');
-      const qid   = questions.length+1;
-      span.setAttribute('data-qid', qid);
-      span.title = `質問 Q${qid}`;
-      range.surroundContents(span);
-      questions.push({id: qid, text: txt, selection: sel.toString()});
-      sel.removeAllRanges();
-      updateSidebar();
-    }
-    document.getElementById('askBtn').onclick = askQuestion;
-    document.getElementById('doc').addEventListener('click', e=>{
-      if(e.target.tagName==='SPAN'&&e.target.dataset.qid){
-        const idx = +e.target.dataset.qid;
-        const el  = document.querySelectorAll('.question')[idx-1];
-        if(el){
-          el.scrollIntoView({behavior:'smooth'});
-          el.style.background='#ffeeba';
-          setTimeout(()=>el.style.background='',600);
+    const chatArea = document.getElementById('chatMessages');
+    const input    = document.getElementById('chatText');
+    const sendBtn  = document.getElementById('sendBtn');
+    const partList = document.getElementById('participants');
+
+    // 最初にルーム名とユーザー名を取得
+    roomName = prompt('部屋名を入力してください：');
+    if (!roomName) alert('部屋名が必要です');
+    userName = prompt('ユーザー名を入力してください：');
+    if (!userName) alert('ユーザー名が必要です');
+    userId = Date.now() + Math.random().toString(36).slice(2);
+
+    // Gun.js の参照を作成
+    const roomRef = gun.get('rooms').get(roomName);
+    usersRef    = roomRef.get('users');
+    messagesRef = roomRef.get('messages');
+
+    // UI 有効化
+    input.disabled   = false;
+    sendBtn.disabled = false;
+
+    // 参加者登録
+    usersRef.get(userId).put(userName);
+    usersRef.map().on((name, id) => {
+      // 追加・削除を反映
+      const existing = document.getElementById('u-' + id);
+      if (name) {
+        if (!existing) {
+          const li = document.createElement('li');
+          li.id = 'u-' + id;
+          li.textContent = name;
+          partList.appendChild(li);
         }
+      } else {
+        if (existing) existing.remove();
       }
     });
 
-    // --- Gun.js セットアップ ---
-    const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
-    let participantsRef, messagesRef;
-    const participantsEl = document.getElementById('participants');
-    const chatArea       = document.getElementById('chatMessages');
-    const chatInput      = document.getElementById('chatText');
-    const sendBtnEl      = document.getElementById('sendBtn');
-    const userListData   = {};
-    const shownMsgs      = new Set();
+    // メッセージ受信
+    messagesRef.map().on((msg, id) => {
+      if (!msg || shown.has(id)) return;
+      shown.add(id);
+      const div = document.createElement('div');
+      div.className = 'msg ' + (msg.name === userName ? 'self' : 'other');
+      div.innerHTML = `<span class="meta">${msg.name} ${new Date(msg.timestamp).toLocaleTimeString()}</span>${msg.text}`;
+      chatArea.appendChild(div);
+      chatArea.scrollTop = chatArea.scrollHeight;
+    });
 
-    function startApp(){
-      form.classList.add('hidden');
-      app.style.display = 'flex';
-      // Gun リファレンス
-      const roomRef = gun.get('rooms').get(roomName);
-      participantsRef = roomRef.get('participants');
-      messagesRef     = roomRef.get('messages');
-
-      // 自分を参加者に登録
-      participantsRef.get(userId).put(userName);
-
-      // 参加者更新
-      participantsRef.map().on((name,id)=>{
-        if(name) userListData[id]=name;
-        else    delete userListData[id];
-        renderParticipants();
-      });
-
-      // メッセージ受信
-      messagesRef.map().on((msg,id)=>{
-        if(!msg||shownMsgs.has(id)) return;
-        shownMsgs.add(id);
-        const d = document.createElement('div');
-        d.textContent = `${msg.user}: ${msg.text}`;
-        chatArea.appendChild(d);
-        chatArea.scrollTop = chatArea.scrollHeight;
-      });
-
-      // 送信許可
-      chatInput.disabled = false;
-      sendBtnEl.disabled = false;
-      sendBtnEl.onclick = sendMessage;
-      chatInput.onkeypress = e=>{
-        if(e.key==='Enter') sendMessage();
-      };
+    // 送信
+    function send() {
+      const txt = input.value.trim();
+      if (!txt) return;
+      messagesRef.set({ name: userName, text: txt, timestamp: Date.now() });
+      input.value = '';
     }
-    function renderParticipants(){
-      participantsEl.innerHTML = '';
-      Object.values(userListData).forEach(n=>{
-        const li = document.createElement('li');
-        li.textContent = n;
-        participantsEl.appendChild(li);
-      });
-    }
-    function sendMessage(){
-      const txt = chatInput.value.trim();
-      if(!txt) return;
-      messagesRef.set({user:userName, text:txt, timestamp:Date.now()});
-      chatInput.value = '';
-    }
-    window.addEventListener('beforeunload', ()=>{
-      if(participantsRef&&userId) participantsRef.get(userId).put(null);
+    sendBtn.onclick = send;
+    input.addEventListener('keypress', e => {
+      if (e.key === 'Enter') send();
+    });
+
+    // 退出時に参加者削除
+    window.addEventListener('beforeunload', () => {
+      usersRef.get(userId).put(null);
     });
   </script>
 </body>
