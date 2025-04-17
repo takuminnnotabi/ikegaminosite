@@ -65,10 +65,11 @@
       position: relative; font-size:14px;
     }
     .msg.self {
-      background: #dcf8c6; align-self: flex-end; border-top-right-radius:2px;
+      background: #dcf8c6; /* 自分のメッセージ：薄緑 */
+      align-self: flex-end; border-top-right-radius:2px;
     }
     .msg.other {
-      background: #dcf8c6; /* 自分以外を薄緑に */
+      background: #e0e0e0; /* 相手のメッセージ：灰色 */
       align-self: flex-start; border-top-left-radius:2px;
     }
     .msg .meta {
@@ -181,7 +182,7 @@
       usersRef           = roomRef.get('users');
       messagesRef        = roomRef.get('messages');
 
-      // 参加者同期（先に購読）
+      // 参加者同期
       usersRef.map().on((name, id) => {
         const el = document.getElementById('u-' + id);
         if (name) {
