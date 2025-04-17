@@ -2,148 +2,289 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>先生に質問チャット（Gun.js版）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>先生に質問チャット</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
-    #welcome, #form, #chat { width: 90%; max-width: 600px; margin: auto; }
-    #form, #chat { display: none; }
-    #users { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
-    #messages { flex: 1; border: 1px solid #ccc; padding: 10px; overflow-y: auto; margin-top: 10px; }
-    form { display: flex; margin-top: 10px; }
-    form input[type="text"] { flex: 1; padding: 5px; }
-    form button { padding: 5px 10px; margin-left: 5px; }
-    .btn { padding: 10px 20px; margin: 10px; cursor: pointer; }
+    /* カラー変数 */
+    :root {
+      --brand-green: #00c300;
+      --bg-light: #f5f5f5;
+      --bubble-other: #e5e5ea;
+      --text-color: #333;
+      --input-bg: #fff;
+      --input-border: #ccc;
+    }
+
+    /* リセット＆基本 */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg-light);
+      color: var(--text-color);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    button { cursor: pointer; border: none; }
+
+    /* STEP1: Welcome */
+    #welcome {
+      margin: auto;
+      text-align: center;
+    }
+    #welcome h2 { margin-bottom: 1rem; }
+    .btn {
+      display: inline-block;
+      width: 45%;
+      margin: 0.5rem 2%;
+      padding: 1rem 0;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      color: #fff;
+    }
+    #createBtn { background: var(--brand-green); }
+    #joinBtn   { background: #0078ff; }
+
+    /* STEP2: Form */
+    #form {
+      margin: auto;
+      width: 90%;
+      max-width: 400px;
+    }
+    #form h2 { text-align: center; margin-bottom: 1rem; }
+    #form label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; }
+    #form input {
+      width: 100%; padding: 0.8rem; margin-top: 0.2rem;
+      border: 1px solid var(--input-border); border-radius: 6px;
+      font-size: 1rem;
+    }
+    #enterBtn {
+      width: 100%; margin-top: 1rem;
+      background: var(--brand-green); color: #fff; padding: 0.8rem;
+      border-radius: 6px; font-size: 1rem;
+    }
+
+    /* STEP3: Chat Layout */
+    #chat {
+      flex: 1;
+      display: none;
+      position: relative;
+      overflow: hidden;
+      background: #fff;
+    }
+    /* PC: 横並び */
+    @media(min-width: 700px) {
+      #chat { display: flex; }
+      #sidebar { width: 200px; border-right: 1px solid var(--input-border); overflow-y: auto; }
+      #main   { flex: 1; display: flex; flex-direction: column; }
+    }
+    /* Mobile: 縦 */
+    @media(max-width: 699px) {
+      #chat { display: flex; flex-direction: column; }
+      #sidebar { display: none; }
+      #main    { flex: 1; display: flex; flex-direction: column; }
+    }
+
+    /* サイドバー（参加者リスト） */
+    #sidebar {
+      background: var(--bg-light);
+      padding: 1rem;
+    }
+    #sidebar h3 { margin-bottom: 0.5rem; font-size: 1rem; }
+    #sidebar ul { list-style: none; }
+    #sidebar li { padding: 0.4rem 0; font-size: 0.9rem; }
+
+    /* メッセージエリア */
+    #messages {
+      flex: 1;
+      padding: 1rem;
+      overflow-y: auto;
+      background: var(--bg-light);
+    }
+    .bubble {
+      max-width: 70%;
+      margin-bottom: 0.8rem;
+      padding: 0.8rem 1rem;
+      border-radius: 18px;
+      position: relative;
+      line-height: 1.3;
+      word-wrap: break-word;
+      font-size: 0.95rem;
+    }
+    /* 他人 (左) */
+    .bubble.other {
+      background: var(--bubble-other);
+      align-self: flex-start;
+      border-top-left-radius: 2px;
+    }
+    /* 自分 (右) */
+    .bubble.self {
+      background: var(--brand-green);
+      color: #fff;
+      align-self: flex-end;
+      border-top-right-radius: 2px;
+    }
+    .bubble .meta {
+      display: block;
+      font-size: 0.75rem;
+      opacity: 0.7;
+      margin-bottom: 0.3rem;
+    }
+
+    /* 入力エリア */
+    #inputArea {
+      display: flex;
+      padding: 0.5rem;
+      border-top: 1px solid var(--input-border);
+      background: var(--input-bg);
+    }
+    #messageInput {
+      flex: 1;
+      padding: 0.8rem;
+      border: 1px solid var(--input-border);
+      border-radius: 20px;
+      font-size: 1rem;
+      margin-right: 0.5rem;
+    }
+    #sendBtn {
+      width: 48px; height: 48px;
+      background: var(--brand-green);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #sendBtn svg {
+      width: 24px; height: 24px;
+      fill: #fff;
+    }
   </style>
 </head>
 <body>
 
-  <!-- STEP1: ルーム作成 or 参加 の選択 -->
+  <!-- STEP1 -->
   <div id="welcome">
     <h2>はじめに</h2>
     <button class="btn" id="createBtn">ルームを作成</button>
     <button class="btn" id="joinBtn">ルームに参加</button>
   </div>
 
-  <!-- STEP2: 名前とルーム名入力フォーム -->
+  <!-- STEP2 -->
   <div id="form">
     <h2 id="formTitle"></h2>
-    <label>名前：<input type="text" id="nameInput"></label><br><br>
-    <label>ルーム名：<input type="text" id="roomInput"></label><br><br>
-    <button class="btn" id="enterBtn"></button>
+    <label>名前<input type="text" id="nameInput" placeholder="あなたの名前"></label>
+    <label>ルーム名<input type="text" id="roomInput" placeholder="room‑1234"></label>
+    <button id="enterBtn">入室</button>
   </div>
 
-  <!-- STEP3: チャット画面 -->
+  <!-- STEP3 -->
   <div id="chat">
-    <h2 id="roomTitle"></h2>
-    <div id="users">
-      <strong>参加者：</strong>
+    <!-- サイドバー: 参加者一覧 -->
+    <div id="sidebar">
+      <h3>参加者</h3>
       <ul id="userList"></ul>
     </div>
-    <div id="messages"></div>
-    <form id="messageForm">
-      <input type="text" id="messageInput" placeholder="メッセージを入力…">
-      <button type="submit">送信</button>
-    </form>
+    <!-- メイン: メッセージ＋入力 -->
+    <div id="main">
+      <div id="messages"></div>
+      <div id="inputArea">
+        <input type="text" id="messageInput" placeholder="メッセージを入力…">
+        <button id="sendBtn">
+          <!-- 送信アイコン -->
+          <svg viewBox="0 0 24 24">
+            <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z" />
+          </svg>
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Gun.js -->
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
   <script>
     const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
-
-    let mode;         // "create" or "join"
-    let roomName, userName, userId;
+    let mode, roomName, userName, userId;
     let roomRef, usersRef, messagesRef;
-    const userListData = {};
-    const shownMsgIds = new Set();
+    const userListData = {}, shownMsgIds = new Set();
 
-    const welcomeDiv  = document.getElementById('welcome');
-    const formDiv     = document.getElementById('form');
-    const chatDiv     = document.getElementById('chat');
-    const formTitle   = document.getElementById('formTitle');
-    const enterBtn    = document.getElementById('enterBtn');
-    const roomTitleEl = document.getElementById('roomTitle');
-    const userListEl  = document.getElementById('userList');
-    const messagesEl  = document.getElementById('messages');
+    // DOM
+    const welcome = document.getElementById('welcome');
+    const form    = document.getElementById('form');
+    const chat    = document.getElementById('chat');
+    const formTitle = document.getElementById('formTitle');
+    const enterBtn  = document.getElementById('enterBtn');
+    const userList  = document.getElementById('userList');
+    const messages  = document.getElementById('messages');
+    const msgInput  = document.getElementById('messageInput');
+    const sendBtn   = document.getElementById('sendBtn');
 
-    // STEP1 ボタン設定
+    // STEP1
     document.getElementById('createBtn').onclick = () => openForm('create');
     document.getElementById('joinBtn').onclick   = () => openForm('join');
-
-    function openForm(selectedMode) {
-      mode = selectedMode;
-      welcomeDiv.style.display = 'none';
-      formDiv.style.display    = 'block';
-      formTitle.textContent    = mode === 'create' ? 'ルームを作成' : 'ルームに参加';
-      enterBtn.textContent     = mode === 'create' ? '作成して入室' : '参加して入室';
+    function openForm(sel) {
+      mode = sel;
+      welcome.style.display = 'none';
+      form.style.display    = 'block';
+      formTitle.textContent = sel==='create' ? 'ルームを作成' : 'ルームに参加';
+      enterBtn.textContent  = '入室';
     }
 
-    // STEP2 入室処理
+    // STEP2
     enterBtn.onclick = () => {
       userName = document.getElementById('nameInput').value.trim();
       roomName = document.getElementById('roomInput').value.trim();
-      if (!userName || !roomName) {
-        alert('名前とルーム名を入力してください');
-        return;
-      }
-      // ユニークID
-      userId = Date.now().toString() + Math.random().toString(36).slice(2,7);
-      enterChat();
+      if (!userName||!roomName) return alert('名前とルーム名を入力してください');
+      userId = Date.now()+Math.random().toString(36).slice(2,6);
+      startChat();
     };
 
-    function enterChat() {
-      formDiv.style.display = 'none';
-      chatDiv.style.display = 'flex';
-      roomTitleEl.textContent = `ルーム: ${roomName}`;
-
-      // Gun.js 参照
+    // STEP3
+    function startChat() {
+      form.style.display = 'none';
+      chat.style.display = 'flex';
+      // Gun.js リファレンス
       roomRef     = gun.get('rooms').get(roomName);
       usersRef    = roomRef.get('users');
       messagesRef = roomRef.get('messages');
-
-      // 作成モードでも参加モードでも実質同じ処理：users に登録
+      // 自分を登録
       usersRef.get(userId).put(userName);
-
-      // 参加者リスト同期
-      usersRef.map().on((name, id) => {
-        if (name) userListData[id] = name;
-        else      delete userListData[id];
+      // 参加者同期
+      usersRef.map().on((name,id)=>{
+        if (name) userListData[id]=name;
+        else delete userListData[id];
         renderUsers();
       });
-
       // メッセージ同期
-      messagesRef.map().on((msg, msgId) => {
-        if (!msg || shownMsgIds.has(msgId)) return;
-        shownMsgIds.add(msgId);
-        const p = document.createElement('p');
-        const time = new Date(msg.timestamp).toLocaleTimeString();
-        p.innerHTML = `<strong>${msg.name}</strong> <em>${time}</em><br>${msg.text}`;
-        messagesEl.appendChild(p);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+      messagesRef.map().on((msg,id)=>{
+        if (!msg||shownMsgIds.has(id)) return;
+        shownMsgIds.add(id);
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble ' + (msg.name===userName?'self':'other');
+        bubble.innerHTML = `<span class="meta">${msg.name} ${new Date(msg.timestamp).toLocaleTimeString()}</span>${msg.text}`;
+        messages.appendChild(bubble);
+        messages.scrollTop = messages.scrollHeight;
       });
-
-      // 送信フォーム
-      document.getElementById('messageForm').addEventListener('submit', e => {
-        e.preventDefault();
-        const text = document.getElementById('messageInput').value.trim();
-        if (!text) return;
-        messagesRef.set({ name: userName, text, timestamp: Date.now() });
-        document.getElementById('messageInput').value = '';
-      });
+      // 送信
+      sendBtn.onclick = sendMessage;
+      msgInput.onkeypress = e=>{ if(e.key==='Enter') sendMessage(); };
     }
 
-    // 参加者リスト描画
     function renderUsers() {
-      userListEl.innerHTML = '';
-      Object.values(userListData).forEach(name => {
+      userList.innerHTML = '';
+      Object.values(userListData).forEach(n=>{
         const li = document.createElement('li');
-        li.textContent = name;
-        userListEl.appendChild(li);
+        li.textContent = n;
+        userList.appendChild(li);
       });
     }
 
-    // 退出時に users から削除
-    window.addEventListener('beforeunload', () => {
+    function sendMessage() {
+      const txt = msgInput.value.trim();
+      if (!txt) return;
+      messagesRef.set({ name:userName, text:txt, timestamp:Date.now() });
+      msgInput.value = '';
+    }
+
+    // 離脱時クリア
+    window.addEventListener('beforeunload',()=>{
       if (usersRef && userId) usersRef.get(userId).put(null);
     });
   </script>
