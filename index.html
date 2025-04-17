@@ -42,13 +42,11 @@
     #chatApp {
       display: none; flex: 1; overflow: hidden;
     }
-    /* PC: 横並び */
     @media(min-width:700px) {
       #chatApp { display: flex }
       #container { flex:1; display:flex; flex-direction:column }
       #sidebar   { width:240px }
     }
-    /* Mobile: 縦積み */
     @media(max-width:699px) {
       #chatApp { display:flex; flex-direction:column }
       #sidebar { width:100%; border-top:1px solid #ddd }
@@ -118,7 +116,6 @@
 
   <!-- STEP3: チャット画面 -->
   <div id="chatApp">
-    <!-- メインチャット -->
     <div id="container">
       <div id="chatMessages"></div>
       <div id="chatInput">
@@ -126,8 +123,9 @@
         <button id="sendBtn" disabled>送信</button>
       </div>
     </div>
-    <!-- サイドバー：参加者リスト -->
     <div id="sidebar">
+      <!-- ルーム名を表示 -->
+      <h2 id="roomNameTitle"></h2>
       <h2>参加者</h2>
       <ul id="participants"></ul>
     </div>
@@ -141,19 +139,18 @@
     let mode, roomName, userName, userId;
     let usersRef, messagesRef;
     const shown = new Set();
-
-    // DOM
-    const welcome  = document.getElementById('welcome');
-    const form     = document.getElementById('form');
-    const chatApp  = document.getElementById('chatApp');
-    const formTitle= document.getElementById('formTitle');
-    const nameIn   = document.getElementById('nameInput');
-    const roomIn   = document.getElementById('roomInput');
-    const enterBtn = document.getElementById('enterBtn');
-    const chatArea = document.getElementById('chatMessages');
-    const input    = document.getElementById('chatText');
-    const sendBtn  = document.getElementById('sendBtn');
-    const partList = document.getElementById('participants');
+    const welcome   = document.getElementById('welcome');
+    const form      = document.getElementById('form');
+    const chatApp   = document.getElementById('chatApp');
+    const formTitle = document.getElementById('formTitle');
+    const nameIn    = document.getElementById('nameInput');
+    const roomIn    = document.getElementById('roomInput');
+    const enterBtn  = document.getElementById('enterBtn');
+    const chatArea  = document.getElementById('chatMessages');
+    const input     = document.getElementById('chatText');
+    const sendBtn   = document.getElementById('sendBtn');
+    const partList  = document.getElementById('participants');
+    const roomTitle = document.getElementById('roomNameTitle');
 
     // STEP1
     document.getElementById('createBtn').onclick = () => openForm('create');
@@ -176,35 +173,36 @@
 
     // STEP3
     function startChat() {
-      form.style.display   = 'none';
-      chatApp.style.display= 'flex';
+      form.style.display    = 'none';
+      chatApp.style.display = 'flex';
 
-      // Gun.js 参照
-      const roomRef = gun.get('rooms').get(roomName);
-      usersRef    = roomRef.get('users');
-      messagesRef = roomRef.get('messages');
+      const roomRef      = gun.get('rooms').get(roomName);
+      usersRef           = roomRef.get('users');
+      messagesRef        = roomRef.get('messages');
 
-      // UI 有効化
-      input.disabled   = false;
-      sendBtn.disabled = false;
+      // 参加者同期（先に購読）
+      usersRef.map().on((name, id) => {
+        const el = document.getElementById('u-' + id);
+        if (name) {
+          if (!el) {
+            const li = document.createElement('li');
+            li.id = 'u-' + id;
+            li.textContent = name;
+            partList.appendChild(li);
+          }
+        } else if (el) {
+          el.remove();
+        }
+      });
 
       // 自分を参加者リストに登録
       usersRef.get(userId).put(userName);
 
-      // 参加者同期
-      usersRef.map().on((name,id)=>{
-        const el = document.getElementById('u-'+id);
-        if (name) {
-          if (!el) {
-            const li = document.createElement('li');
-            li.id = 'u-'+id; li.textContent = name;
-            partList.appendChild(li);
-          }
-        } else if (el) el.remove();
-      });
+      // ルーム名表示
+      roomTitle.textContent = 'ルーム: ' + roomName;
 
       // メッセージ同期
-      messagesRef.map().on((msg,id)=>{
+      messagesRef.map().on((msg, id) => {
         if (!msg || shown.has(id)) return;
         shown.add(id);
         const d = document.createElement('div');
@@ -214,7 +212,11 @@
         chatArea.scrollTop = chatArea.scrollHeight;
       });
 
-      // 送信
+      // UI 有効化
+      input.disabled   = false;
+      sendBtn.disabled = false;
+
+      // メッセージ送信
       function send() {
         const txt = input.value.trim();
         if (!txt) return;
@@ -222,10 +224,10 @@
         input.value = '';
       }
       sendBtn.onclick = send;
-      input.addEventListener('keypress', e => { if (e.key==='Enter') send(); });
+      input.addEventListener('keypress', e => { if (e.key === 'Enter') send(); });
 
-      // 退出時に参加解除
-      window.addEventListener('beforeunload', ()=> {
+      // 離脱時に参加解除
+      window.addEventListener('beforeunload', () => {
         usersRef.get(userId).put(null);
       });
     }
