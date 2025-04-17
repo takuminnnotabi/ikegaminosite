@@ -5,30 +5,38 @@
   <title>先生に質問チャット（Gun.js版）</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
-    #join, #chat { width: 90%; max-width: 600px; margin: auto; }
-    #chat { display: none; flex: 1; }
-    #users { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
-    #messages { flex: 1; border: 1px solid #ccc; padding: 10px; overflow-y: auto; margin-bottom: 10px; }
-    form { display: flex; }
+    #welcome, #form, #chat { width: 90%; max-width: 600px; margin: auto; }
+    #form, #chat { display: none; }
+    #users { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
+    #messages { flex: 1; border: 1px solid #ccc; padding: 10px; overflow-y: auto; margin-top: 10px; }
+    form { display: flex; margin-top: 10px; }
     form input[type="text"] { flex: 1; padding: 5px; }
-    form button { padding: 5px 10px; }
+    form button { padding: 5px 10px; margin-left: 5px; }
+    .btn { padding: 10px 20px; margin: 10px; cursor: pointer; }
   </style>
 </head>
 <body>
 
-  <!-- 参加フォーム -->
-  <div id="join">
-    <h2>ルームに参加</h2>
-    <label>名前: <input type="text" id="nameInput"></label><br><br>
-    <label>ルーム名: <input type="text" id="roomInput"></label><br><br>
-    <button id="joinBtn">参加</button>
+  <!-- STEP1: ルーム作成 or 参加 の選択 -->
+  <div id="welcome">
+    <h2>はじめに</h2>
+    <button class="btn" id="createBtn">ルームを作成</button>
+    <button class="btn" id="joinBtn">ルームに参加</button>
   </div>
 
-  <!-- チャット画面 -->
+  <!-- STEP2: 名前とルーム名入力フォーム -->
+  <div id="form">
+    <h2 id="formTitle"></h2>
+    <label>名前：<input type="text" id="nameInput"></label><br><br>
+    <label>ルーム名：<input type="text" id="roomInput"></label><br><br>
+    <button class="btn" id="enterBtn"></button>
+  </div>
+
+  <!-- STEP3: チャット画面 -->
   <div id="chat">
     <h2 id="roomTitle"></h2>
     <div id="users">
-      <strong>参加者:</strong>
+      <strong>参加者：</strong>
       <ul id="userList"></ul>
     </div>
     <div id="messages"></div>
@@ -38,60 +46,72 @@
     </form>
   </div>
 
-  <!-- Gun.js の読み込み -->
+  <!-- Gun.js -->
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
   <script>
-    // Gun のピア（無料公開サーバー）に接続
     const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
 
+    let mode;         // "create" or "join"
     let roomName, userName, userId;
     let roomRef, usersRef, messagesRef;
-
-    // DOM 要素
-    const joinDiv = document.getElementById('join');
-    const chatDiv = document.getElementById('chat');
-    const roomTitle = document.getElementById('roomTitle');
-    const userListEl = document.getElementById('userList');
-    const messagesEl = document.getElementById('messages');
-
-    // データ保持用
     const userListData = {};
     const shownMsgIds = new Set();
 
-    // 参加ボタン
-    document.getElementById('joinBtn').addEventListener('click', () => {
+    const welcomeDiv  = document.getElementById('welcome');
+    const formDiv     = document.getElementById('form');
+    const chatDiv     = document.getElementById('chat');
+    const formTitle   = document.getElementById('formTitle');
+    const enterBtn    = document.getElementById('enterBtn');
+    const roomTitleEl = document.getElementById('roomTitle');
+    const userListEl  = document.getElementById('userList');
+    const messagesEl  = document.getElementById('messages');
+
+    // STEP1 ボタン設定
+    document.getElementById('createBtn').onclick = () => openForm('create');
+    document.getElementById('joinBtn').onclick   = () => openForm('join');
+
+    function openForm(selectedMode) {
+      mode = selectedMode;
+      welcomeDiv.style.display = 'none';
+      formDiv.style.display    = 'block';
+      formTitle.textContent    = mode === 'create' ? 'ルームを作成' : 'ルームに参加';
+      enterBtn.textContent     = mode === 'create' ? '作成して入室' : '参加して入室';
+    }
+
+    // STEP2 入室処理
+    enterBtn.onclick = () => {
       userName = document.getElementById('nameInput').value.trim();
       roomName = document.getElementById('roomInput').value.trim();
-      if (!userName || !roomName) return alert('名前とルーム名を入力してください');
+      if (!userName || !roomName) {
+        alert('名前とルーム名を入力してください');
+        return;
+      }
+      // ユニークID
       userId = Date.now().toString() + Math.random().toString(36).slice(2,7);
-      enterRoom();
-    });
+      enterChat();
+    };
 
-    function enterRoom() {
-      // UI 切り替え
-      joinDiv.style.display = 'none';
+    function enterChat() {
+      formDiv.style.display = 'none';
       chatDiv.style.display = 'flex';
-      roomTitle.textContent = `ルーム: ${roomName}`;
+      roomTitleEl.textContent = `ルーム: ${roomName}`;
 
-      // ルーム参照を作成
+      // Gun.js 参照
       roomRef     = gun.get('rooms').get(roomName);
       usersRef    = roomRef.get('users');
       messagesRef = roomRef.get('messages');
 
-      // 自分を参加者リストに登録
+      // 作成モードでも参加モードでも実質同じ処理：users に登録
       usersRef.get(userId).put(userName);
 
-      // 参加者リストのリアルタイム監視
+      // 参加者リスト同期
       usersRef.map().on((name, id) => {
-        if (name) {
-          userListData[id] = name;
-        } else {
-          delete userListData[id];
-        }
+        if (name) userListData[id] = name;
+        else      delete userListData[id];
         renderUsers();
       });
 
-      // メッセージ受信のリアルタイム監視
+      // メッセージ同期
       messagesRef.map().on((msg, msgId) => {
         if (!msg || shownMsgIds.has(msgId)) return;
         shownMsgIds.add(msgId);
@@ -112,7 +132,7 @@
       });
     }
 
-    // 参加者リスト再描画
+    // 参加者リスト描画
     function renderUsers() {
       userListEl.innerHTML = '';
       Object.values(userListData).forEach(name => {
@@ -122,11 +142,9 @@
       });
     }
 
-    // ページ離脱時に参加者リストから自分を削除
+    // 退出時に users から削除
     window.addEventListener('beforeunload', () => {
-      if (usersRef && userId) {
-        usersRef.get(userId).put(null);
-      }
+      if (usersRef && userId) usersRef.get(userId).put(null);
     });
   </script>
 </body>
