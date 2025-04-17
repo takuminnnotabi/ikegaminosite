@@ -247,23 +247,26 @@
       partList.addEventListener('click', e => {
         if (e.target.classList.contains('kickBtn')) {
           const targetId = e.target.dataset.id;
+          const li = e.target.closest('li');
+          const kickedName = li.querySelector('span').textContent;
           usersRef.get(targetId).put(null);
+          messagesRef.map().once((msg, msgId) => {
+            if (msg && msg.name === kickedName) {
+              messagesRef.get(msgId).put({ name: 'None' });
+            }
+          });
         }
       });
 
       // ルーム削除ボタン
       deleteBtn.onclick = () => {
-        const roomRef = gun.get('rooms').get(roomName);
-        // メッセージと参加者情報を完全に削除
-        roomRef.get('messages').put(null);
-        roomRef.get('users').put(null);
-        // ルームノード自体を削除
+        const roomRefDel = gun.get('rooms').get(roomName);
+        roomRefDel.get('messages').put(null);
+        roomRefDel.get('users').put(null);
         gun.get('rooms').get(roomName).put(null);
-        // ローカルUIもクリア
         chatArea.innerHTML = '';
         partList.innerHTML = '';
         shown.clear();
-        // 初期画面に戻す
         chatApp.style.display = 'none';
         welcome.style.display = 'flex';
       };
