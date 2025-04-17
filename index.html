@@ -272,12 +272,21 @@
       // ルーム削除ボタン
       deleteBtn.onclick = () => {
         const roomRef = gun.get('rooms').get(roomName);
-        roomRef.get('messages').put(null);
-        roomRef.get('users').put(null);
+        // まず参加者全員を退出させる
+        usersRef.map().once((name, id) => {
+          usersRef.get(id).put(null);
+        });
+        // メッセージを全件削除
+        messagesRef.map().once((msg, id) => {
+          messagesRef.get(id).put(null);
+        });
+        // ルームノード自体を削除
         gun.get('rooms').get(roomName).put(null);
+        // ローカルUIもクリア
         chatArea.innerHTML = '';
         partList.innerHTML = '';
         shown.clear();
+        // 初期画面に戻す
         chatApp.style.display = 'none';
         welcome.style.display = 'flex';
       };
