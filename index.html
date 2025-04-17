@@ -2,46 +2,37 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>ドキュメント＋質問＋チャットデモ</title>
+  <title>ドキュメント＋質問＋チャット＋カメラデモ</title>
   <style>
     body { margin: 0; font-family: sans-serif; display: flex; height: 100vh; }
     #container { flex: 1; display: flex; flex-direction: column; }
-    #toolbar { background: #f0f0f0; padding: 8px; border-bottom: 1px solid #ccc; }
-    #toolbar input, #toolbar button { margin-right: 8px; }
+    #toolbar { background: #f0f0f0; padding: 8px; border-bottom: 1px solid #ccc; display: flex; gap: 8px; }
+    #toolbar input, #toolbar button { padding: 4px 8px; }
     #doc { flex: 1; padding: 16px; overflow: auto; outline: none; }
     #doc span[data-qid] { background-color: #ffeb3b; cursor: pointer; }
-    #sidebar { width: 320px; border-left: 1px solid #ddd; padding: 16px; box-sizing: border-box; overflow: auto; background: #fafafa; }
+    #sidebar { width: 360px; border-left: 1px solid #ddd; padding: 16px; box-sizing: border-box; overflow: auto; background: #fafafa; }
     #sidebar h2 { margin-top: 0; font-size: 18px; }
     #sidebar .question { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
-    #chatMessages { height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; background: #fff; }
-    #chatInput { margin-top: 8px; }
-    #chatInput input { width: calc(100% - 60px); padding: 4px; }
-    #chatInput button { width: 50px; }
+    #participants { margin-bottom: 16px; }
+    #participants li { list-style: none; }
+    #videoContainer { display: flex; gap: 8px; margin-bottom: 16px; }
+    video { width: 100%; background: #000; border: 1px solid #ccc; }
+    #chatMessages { height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; background: #fff; margin-bottom: 8px; }
+    #chatInput { display: flex; gap: 4px; }
+    #chatInput input { flex: 1; padding: 4px; }
+    #chatInput button { padding: 4px 12px; }
   </style>
 
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-  <script>
-    // --- ここにあなたの Firebase 設定を貼り付けてください ---
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "SENDER_ID",
-      appId: "APP_ID"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-  </script>
 </head>
 <body>
   <div id="container">
     <div id="toolbar">
-      <input id="roomIdInput" type="text" placeholder="ルームIDを入力" />
-      <button id="joinBtn">参加</button>
+      <input id="roomIdInput" type="text" placeholder="部屋の名前を入力" />
+      <button id="enableCameraAppBtn">カメラ機能を有効化</button>
+      <button id="joinBtn" disabled>参加</button>
       <button id="askBtn">先生に質問する</button>
     </div>
     <div id="doc" contenteditable="true">
@@ -51,6 +42,15 @@
   </div>
 
   <div id="sidebar">
+    <h2>参加者</h2>
+    <ul id="participants"></ul>
+
+    <h2>ビデオチャット</h2>
+    <div id="videoContainer">
+      <video id="localVideo" autoplay playsinline muted></video>
+      <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+
     <h2>質問一覧</h2>
     <div id="questions"></div>
 
@@ -63,9 +63,22 @@
   </div>
 
   <script>
+    // --- Firebase 初期化 ---
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "SENDER_ID",
+      appId: "APP_ID"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     // 質問機能
     const questions = [];
-    function updateSidebar() {
+    function updateSidebarQuestions() {
       const qContainer = document.getElementById('questions');
       qContainer.innerHTML = '';
       questions.forEach(q => {
@@ -80,17 +93,17 @@
       if (!sel.rangeCount || !sel.toString().trim()) {
         return alert('まず本文中のテキストを選択してください。');
       }
-      const questionText = prompt('先生への質問を入力してください：');
-      if (!questionText) return;
+      const text = prompt('先生への質問を入力してください：');
+      if (!text) return;
       const range = sel.getRangeAt(0);
       const span = document.createElement('span');
       const qid = questions.length + 1;
       span.setAttribute('data-qid', qid);
       span.title = `質問 Q${qid}`;
       range.surroundContents(span);
-      questions.push({ id: qid, text: questionText, selection: sel.toString() });
+      questions.push({ id: qid, text, selection: sel.toString() });
       sel.removeAllRanges();
-      updateSidebar();
+      updateSidebarQuestions();
     }
     document.getElementById('askBtn').addEventListener('click', askQuestion);
     document.getElementById('doc').addEventListener('click', e => {
@@ -105,46 +118,129 @@
       }
     });
 
-    // チャット機能
+    // カメラ許可機能（カスタム→ブラウザ）
+    let localStream = null;
+    document.getElementById('enableCameraAppBtn').addEventListener('click', () => {
+      if (!confirm('カメラ機能を有効化しますか？\n次にブラウザのカメラ許可ダイアログが表示されます。')) {
+        return;
+      }
+      navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        .then(stream => {
+          localStream = stream;
+          document.getElementById('localVideo').srcObject = stream;
+          document.getElementById('joinBtn').disabled = false;
+          alert('カメラが有効になりました。ルームへ参加できます。');
+        })
+        .catch(err => {
+          alert('カメラの許可が拒否されました：' + err.message);
+        });
+    });
+
+    // チャット／ビデオ用変数
     let roomId = null, username = null;
-    const joinBtn  = document.getElementById('joinBtn');
-    const roomInput= document.getElementById('roomIdInput');
-    const sendBtn  = document.getElementById('sendBtn');
-    const chatText = document.getElementById('chatText');
-    const chatArea = document.getElementById('chatMessages');
+    let pc = null;  // RTCPeerConnection
+    const iceConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    joinBtn.addEventListener('click', () => {
-      const rid = roomInput.value.trim();
-      if (!rid) return alert('ルームIDを入力してください。');
-      const name = prompt('ユーザー名を入力してください：');
-      if (!name) return alert('ユーザー名が必要です。');
-      roomId = rid; username = name;
-      roomInput.disabled = true;
-      joinBtn.disabled  = true;
-      chatText.disabled = false;
-      sendBtn.disabled  = false;
+    // 参加ボタン
+    document.getElementById('joinBtn').addEventListener('click', () => {
+      roomId = document.getElementById('roomIdInput').value.trim();
+      if (!roomId) return alert('部屋の名前を入力してください。');
+      username = prompt('ユーザー名を入力してください：');
+      if (!username) return alert('ユーザー名が必要です。');
 
-      // リアルタイムにメッセージ受信
-      const chatRef = db.ref('rooms/' + roomId);
-      chatRef.off();  // 重複リスン防止
+      // 参加者リストに登録
+      const partRef = db.ref(`rooms/${roomId}/participants/${Date.now()}_${username}`);
+      partRef.set(username);
+      // リアルタイム参加者更新
+      db.ref(`rooms/${roomId}/participants`).on('value', snap => {
+        const ul = document.getElementById('participants');
+        ul.innerHTML = '';
+        snap.forEach(child => {
+          const li = document.createElement('li');
+          li.textContent = child.val();
+          ul.appendChild(li);
+        });
+      });
+
+      // チャット受信
+      const chatRef = db.ref(`rooms/${roomId}/chat`);
       chatRef.on('child_added', snap => {
         const msg = snap.val();
         const div = document.createElement('div');
         div.textContent = msg.user + ': ' + msg.text;
-        chatArea.appendChild(div);
-        chatArea.scrollTop = chatArea.scrollHeight;
+        document.getElementById('chatMessages').appendChild(div);
+        document.getElementById('chatMessages').scrollTop =
+          document.getElementById('chatMessages').scrollHeight;
       });
+
+      // WebRTC セットアップ
+      pc = new RTCPeerConnection(iceConfig);
+      // ローカル映像を追加
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+      // ICE candidate を送信
+      pc.onicecandidate = e => {
+        if (!e.candidate) return;
+        db.ref(`rooms/${roomId}/webrtc/candidates`).push(e.candidate.toJSON());
+      };
+      // リモート映像を受信
+      pc.ontrack = e => {
+        document.getElementById('remoteVideo').srcObject = e.streams[0];
+      };
+
+      // シグナリング
+      const webrtcRef = db.ref(`rooms/${roomId}/webrtc`);
+      webrtcRef.child('offer').once('value').then(snap => {
+        if (!snap.exists()) {
+          // Offer 未作成 → 作成者
+          pc.createOffer().then(offer => {
+            pc.setLocalDescription(offer);
+            webrtcRef.child('offer').set(offer.toJSON());
+          });
+        }
+      });
+      // Offer 受信時
+      webrtcRef.child('offer').on('value', snap => {
+        const offer = snap.val();
+        if (offer && !pc.currentRemoteDescription) {
+          pc.setRemoteDescription(new RTCSessionDescription(offer))
+            .then(() => pc.createAnswer())
+            .then(answer => {
+              pc.setLocalDescription(answer);
+              webrtcRef.child('answer').set(answer.toJSON());
+            });
+        }
+      });
+      // Answer 受信時
+      webrtcRef.child('answer').on('value', snap => {
+        const answer = snap.val();
+        if (answer && !pc.currentRemoteDescription) {
+          pc.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+      });
+      // ICE candidate 受信
+      webrtcRef.child('candidates').on('child_added', snap => {
+        const cand = new RTCIceCandidate(snap.val());
+        pc.addIceCandidate(cand);
+      });
+
+      // チャット送信可能に
+      document.getElementById('chatText').disabled = false;
+      document.getElementById('sendBtn').disabled = false;
+      document.getElementById('roomIdInput').disabled = true;
+      document.getElementById('joinBtn').disabled = true;
+      document.getElementById('enableCameraAppBtn').disabled = true;
     });
 
-    sendBtn.addEventListener('click', () => {
-      const text = chatText.value.trim();
+    // チャット送信
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      const text = document.getElementById('chatText').value.trim();
       if (!text) return;
-      db.ref('rooms/' + roomId).push({
+      db.ref(`rooms/${roomId}/chat`).push({
         user: username,
-        text: text,
+        text,
         timestamp: Date.now()
       });
-      chatText.value = '';
+      document.getElementById('chatText').value = '';
     });
   </script>
 </body>
