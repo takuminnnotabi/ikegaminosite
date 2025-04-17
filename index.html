@@ -224,7 +224,8 @@
         shown.add(id);
         const d = document.createElement('div');
         d.className = 'msg ' + (msg.name === userName ? 'self' : 'other');
-        d.innerHTML = `<span class="meta">${msg.name} ${new Date(msg.timestamp).toLocaleTimeString()}</span>${msg.text}`;
+        d.innerHTML = `<span class="meta">${msg.name} ${new Date(msg.timestamp).toLocaleTimeString()}</span>${msg.text}
+          <button class="delBtn" data-id="${id}">削除</button>`;
         chatArea.appendChild(d);
         chatArea.scrollTop = chatArea.scrollHeight;
       });
@@ -243,26 +244,36 @@
       sendBtn.onclick = send;
       input.addEventListener('keypress', e => { if (e.key === 'Enter') send(); });
 
-      // ユーザー強制退出（誰でも可能）
+      // ユーザー強制退出（誰でも可能）＆過去メッセージ名をNoneに
       partList.addEventListener('click', e => {
         if (e.target.classList.contains('kickBtn')) {
           const targetId = e.target.dataset.id;
-          const li = e.target.closest('li');
-          const kickedName = li.querySelector('span').textContent;
-          usersRef.get(targetId).put(null);
-          messagesRef.map().once((msg, msgId) => {
-            if (msg && msg.name === kickedName) {
-              messagesRef.get(msgId).put({ name: 'None' });
-            }
+          usersRef.get(targetId).once((name) => {
+            usersRef.get(targetId).put(null);
+            messagesRef.map().once((msg, msgId) => {
+              if (msg && msg.name === name) {
+                messagesRef.get(msgId).put({ name: 'None' });
+              }
+            });
           });
+        }
+      });
+
+      // コメント削除（誰でも可能）
+      chatArea.addEventListener('click', e => {
+        if (e.target.classList.contains('delBtn')) {
+          const msgId = e.target.dataset.id;
+          messagesRef.get(msgId).put(null);
+          const msgDiv = e.target.closest('.msg');
+          if (msgDiv) msgDiv.remove();
         }
       });
 
       // ルーム削除ボタン
       deleteBtn.onclick = () => {
-        const roomRefDel = gun.get('rooms').get(roomName);
-        roomRefDel.get('messages').put(null);
-        roomRefDel.get('users').put(null);
+        const roomRef = gun.get('rooms').get(roomName);
+        roomRef.get('messages').put(null);
+        roomRef.get('users').put(null);
         gun.get('rooms').get(roomName).put(null);
         chatArea.innerHTML = '';
         partList.innerHTML = '';
