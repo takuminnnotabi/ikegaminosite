@@ -1,173 +1,132 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <title>ドキュメント＋質問＋チャットデモ</title>
+  <meta charset="UTF-8">
+  <title>先生に質問チャット（Gun.js版）</title>
   <style>
-    body { margin: 0; font-family: sans-serif; display: flex; height: 100vh; }
-    #container { flex: 1; display: flex; flex-direction: column; }
-    #toolbar { background: #f0f0f0; padding: 8px; border-bottom: 1px solid #ccc; }
-    #toolbar input, #toolbar button { margin-right: 8px; }
-    #doc { flex: 1; padding: 16px; overflow: auto; outline: none; }
-    #doc span[data-qid] { background-color: #ffeb3b; cursor: pointer; }
-    #sidebar { width: 320px; border-left: 1px solid #ddd; padding: 16px; box-sizing: border-box; overflow: auto; background: #fafafa; }
-    #sidebar h2 { margin-top: 16px; font-size: 18px; }
-    #sidebar .question { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
-    #chatMessages { height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; background: #fff; }
-    #chatInput { margin-top: 8px; display: flex; }
-    #chatInput input { flex: 1; padding: 4px; }
-    #chatInput button { width: 60px; margin-left: 8px; }
-    #participants { list-style: none; padding: 0; margin: 0; }
-    #participants li { padding: 4px 0; border-bottom: 1px solid #eee; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+    #join, #chat { width: 90%; max-width: 600px; margin: auto; }
+    #chat { display: none; flex: 1; }
+    #users { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+    #messages { flex: 1; border: 1px solid #ccc; padding: 10px; overflow-y: auto; margin-bottom: 10px; }
+    form { display: flex; }
+    form input[type="text"] { flex: 1; padding: 5px; }
+    form button { padding: 5px 10px; }
   </style>
-
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-  <script>
-    // --- ここに Firebase の設定を貼り付けてください ---
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "SENDER_ID",
-      appId: "APP_ID"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-  </script>
 </head>
 <body>
-  <div id="container">
-    <div id="toolbar">
-      <input id="roomIdInput" type="text" placeholder="部屋の名前を入力" />
-      <button id="joinBtn">参加</button>
-      <button id="askBtn">先生に質問する</button>
-    </div>
-    <div id="doc" contenteditable="true">
-      <h1>ここにドキュメント本文を書いてください</h1>
-      <p>テキストを選択して「先生に質問する」ボタンを押すと、質問を挿入できます。</p>
-    </div>
+
+  <!-- 参加フォーム -->
+  <div id="join">
+    <h2>ルームに参加</h2>
+    <label>名前: <input type="text" id="nameInput"></label><br><br>
+    <label>ルーム名: <input type="text" id="roomInput"></label><br><br>
+    <button id="joinBtn">参加</button>
   </div>
 
-  <div id="sidebar">
-    <h2>参加者</h2>
-    <ul id="participants"></ul>
-
-    <h2>質問一覧</h2>
-    <div id="questions"></div>
-
-    <h2>チャット</h2>
-    <div id="chatMessages"></div>
-    <div id="chatInput">
-      <input id="chatText" placeholder="メッセージを入力" disabled />
-      <button id="sendBtn" disabled>送信</button>
+  <!-- チャット画面 -->
+  <div id="chat">
+    <h2 id="roomTitle"></h2>
+    <div id="users">
+      <strong>参加者:</strong>
+      <ul id="userList"></ul>
     </div>
+    <div id="messages"></div>
+    <form id="messageForm">
+      <input type="text" id="messageInput" placeholder="メッセージを入力…">
+      <button type="submit">送信</button>
+    </form>
   </div>
 
+  <!-- Gun.js の読み込み -->
+  <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
   <script>
-    // 質問機能
-    const questions = [];
-    function updateSidebar() {
-      const qContainer = document.getElementById('questions');
-      qContainer.innerHTML = '';
-      questions.forEach(q => {
-        const div = document.createElement('div');
-        div.classList.add('question');
-        div.innerHTML = `<strong>Q${q.id}：</strong> ${q.text}<br><em>（"${q.selection}" を参照）</em>`;
-        qContainer.appendChild(div);
-      });
-    }
-    function askQuestion() {
-      const sel = window.getSelection();
-      if (!sel.rangeCount || !sel.toString().trim()) {
-        return alert('まず本文中のテキストを選択してください。');
-      }
-      const questionText = prompt('先生への質問を入力してください：');
-      if (!questionText) return;
-      const range = sel.getRangeAt(0);
-      const span = document.createElement('span');
-      const qid = questions.length + 1;
-      span.setAttribute('data-qid', qid);
-      span.title = `質問 Q${qid}`;
-      range.surroundContents(span);
-      questions.push({ id: qid, text: questionText, selection: sel.toString() });
-      sel.removeAllRanges();
-      updateSidebar();
-    }
-    document.getElementById('askBtn').addEventListener('click', askQuestion);
-    document.getElementById('doc').addEventListener('click', e => {
-      if (e.target.tagName === 'SPAN' && e.target.dataset.qid) {
-        const idx = e.target.dataset.qid;
-        const qEl = document.querySelector(`#questions .question:nth-child(${idx})`);
-        if (qEl) {
-          qEl.scrollIntoView({ behavior: 'smooth' });
-          qEl.style.background = '#ffeeba';
-          setTimeout(() => qEl.style.background = '', 1000);
+    // Gun のピア（無料公開サーバー）に接続
+    const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
+
+    let roomName, userName, userId;
+    let roomRef, usersRef, messagesRef;
+
+    // DOM 要素
+    const joinDiv = document.getElementById('join');
+    const chatDiv = document.getElementById('chat');
+    const roomTitle = document.getElementById('roomTitle');
+    const userListEl = document.getElementById('userList');
+    const messagesEl = document.getElementById('messages');
+
+    // データ保持用
+    const userListData = {};
+    const shownMsgIds = new Set();
+
+    // 参加ボタン
+    document.getElementById('joinBtn').addEventListener('click', () => {
+      userName = document.getElementById('nameInput').value.trim();
+      roomName = document.getElementById('roomInput').value.trim();
+      if (!userName || !roomName) return alert('名前とルーム名を入力してください');
+      userId = Date.now().toString() + Math.random().toString(36).slice(2,7);
+      enterRoom();
+    });
+
+    function enterRoom() {
+      // UI 切り替え
+      joinDiv.style.display = 'none';
+      chatDiv.style.display = 'flex';
+      roomTitle.textContent = `ルーム: ${roomName}`;
+
+      // ルーム参照を作成
+      roomRef     = gun.get('rooms').get(roomName);
+      usersRef    = roomRef.get('users');
+      messagesRef = roomRef.get('messages');
+
+      // 自分を参加者リストに登録
+      usersRef.get(userId).put(userName);
+
+      // 参加者リストのリアルタイム監視
+      usersRef.map().on((name, id) => {
+        if (name) {
+          userListData[id] = name;
+        } else {
+          delete userListData[id];
         }
-      }
-    });
+        renderUsers();
+      });
 
-    // チャット・参加者機能
-    let roomId = null, username = null;
-    let participantsRef;
-    const joinBtn  = document.getElementById('joinBtn');
-    const roomInput= document.getElementById('roomIdInput');
-    const sendBtn  = document.getElementById('sendBtn');
-    const chatText = document.getElementById('chatText');
-    const chatArea = document.getElementById('chatMessages');
-    const partList = document.getElementById('participants');
+      // メッセージ受信のリアルタイム監視
+      messagesRef.map().on((msg, msgId) => {
+        if (!msg || shownMsgIds.has(msgId)) return;
+        shownMsgIds.add(msgId);
+        const p = document.createElement('p');
+        const time = new Date(msg.timestamp).toLocaleTimeString();
+        p.innerHTML = `<strong>${msg.name}</strong> <em>${time}</em><br>${msg.text}`;
+        messagesEl.appendChild(p);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
 
-    joinBtn.addEventListener('click', () => {
-      const rid = roomInput.value.trim();
-      if (!rid) return alert('部屋の名前を入力してください。');
-      const name = prompt('ユーザー名を入力してください：');
-      if (!name) return alert('ユーザー名が必要です。');
-      roomId = rid; username = name;
-      roomInput.disabled = true;
-      joinBtn.disabled  = true;
-      chatText.disabled = false;
-      sendBtn.disabled  = false;
+      // 送信フォーム
+      document.getElementById('messageForm').addEventListener('submit', e => {
+        e.preventDefault();
+        const text = document.getElementById('messageInput').value.trim();
+        if (!text) return;
+        messagesRef.set({ name: userName, text, timestamp: Date.now() });
+        document.getElementById('messageInput').value = '';
+      });
+    }
 
-      // 参加者登録
-      participantsRef = db.ref(`rooms/${roomId}/participants`);
-      participantsRef.child(username).set(true);
-      // 参加者一覧の更新
-      participantsRef.on('child_added', snap => {
+    // 参加者リスト再描画
+    function renderUsers() {
+      userListEl.innerHTML = '';
+      Object.values(userListData).forEach(name => {
         const li = document.createElement('li');
-        li.id = `user-${snap.key}`;
-        li.textContent = snap.key;
-        partList.appendChild(li);
+        li.textContent = name;
+        userListEl.appendChild(li);
       });
-      participantsRef.on('child_removed', snap => {
-        const li = document.getElementById(`user-${snap.key}`);
-        if (li) partList.removeChild(li);
-      });
+    }
 
-      // ウィンドウを閉じるときに参加解除
-      window.addEventListener('beforeunload', () => {
-        participantsRef.child(username).remove();
-      });
-
-      // メッセージ受信
-      const chatRef = db.ref(`rooms/${roomId}/messages`);
-      chatRef.off();
-      chatRef.on('child_added', snap => {
-        const msg = snap.val();
-        const div = document.createElement('div');
-        div.textContent = `${msg.user}: ${msg.text}`;
-        chatArea.appendChild(div);
-        chatArea.scrollTop = chatArea.scrollHeight;
-      });
-    });
-
-    sendBtn.addEventListener('click', () => {
-      const text = chatText.value.trim();
-      if (!text) return;
-      db.ref(`rooms/${roomId}/messages`).push({ user: username, text: text, timestamp: Date.now() });
-      chatText.value = '';
+    // ページ離脱時に参加者リストから自分を削除
+    window.addEventListener('beforeunload', () => {
+      if (usersRef && userId) {
+        usersRef.get(userId).put(null);
+      }
     });
   </script>
 </body>
