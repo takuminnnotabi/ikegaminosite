@@ -140,6 +140,9 @@
       </div>
     </div>
     <div id="sidebar">
+      <button id="toggleCamBtn">カメラオン</button>
+      <video id="localVideo" autoplay muted playsinline style="width:100%; max-width:240px; margin-bottom:8px;"></video>
+      <img id="remoteVideo" style="width:100%; max-width:240px; margin-bottom:8px;" />
       <h2 id="roomNameTitle"></h2>
       <button id="deleteRoomBtn">ルームを削除</button>
       <h2>参加者</h2>
@@ -147,13 +150,12 @@
     </div>
   </div>
 
-  <!-- Gun.js -->
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
   <script>
     const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
 
     let mode, roomName, userName, userId;
-    let usersRef, messagesRef;
+    let usersRef, messagesRef, videoRef;
     const shown = new Set();
     const welcome   = document.getElementById('welcome');
     const form      = document.getElementById('form');
@@ -196,6 +198,55 @@
       const roomRef       = gun.get('rooms').get(roomName);
       usersRef            = roomRef.get('users');
       messagesRef         = roomRef.get('messages');
+      videoRef            = roomRef.get('video');
+
+      // カメラ制御
+      const toggleCamBtn = document.getElementById('toggleCamBtn');
+      const localVideo   = document.getElementById('localVideo');
+      const remoteVideo  = document.getElementById('remoteVideo');
+      let mediaStream    = null;
+      let intervalId;
+
+      toggleCamBtn.onclick = () => {
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(t => t.stop());
+          mediaStream = null;
+          localVideo.srcObject = null;
+          clearInterval(intervalId);
+          toggleCamBtn.textContent = 'カメラオン';
+          videoRef.get(userId).put(null);
+        } else {
+          navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+            .then(stream => {
+              mediaStream = stream;
+              localVideo.srcObject = stream;
+              toggleCamBtn.textContent = 'カメラオフ';
+              const canvas = document.createElement('canvas');
+              intervalId = setInterval(() => {
+                if (!mediaStream) return;
+                const track = stream.getVideoTracks()[0];
+                const settings = track.getSettings();
+                canvas.width  = settings.width  || 320;
+                canvas.height = settings.height || 240;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
+                const dataURL = canvas.toDataURL('image/jpeg', 0.5);
+                videoRef.get(userId).put({ frame: dataURL, timestamp: Date.now() });
+              }, 500);
+            })
+            .catch(err => alert('カメラの起動に失敗しました: ' + err));
+        }
+      };
+
+      // 相手映像受信：自分のID以外のフレームだけ表示
+      videoRef.map().on((data, id) => {
+        if (id === userId) return;
+        if (data && data.frame) {
+          remoteVideo.src = data.frame;
+        } else {
+          remoteVideo.src = '';
+        }
+      });
 
       // 参加者同期
       usersRef.map().on((name, id) => {
@@ -212,10 +263,7 @@
         }
       });
 
-      // 自分を参加者リストに登録
       usersRef.get(userId).put(userName);
-
-      // ルーム名表示
       roomTitle.textContent = 'ルーム: ' + roomName;
 
       // メッセージ同期
@@ -230,11 +278,9 @@
         chatArea.scrollTop = chatArea.scrollHeight;
       });
 
-      // UI 有効化
       input.disabled   = false;
       sendBtn.disabled = false;
 
-      // メッセージ送信
       function send() {
         const txt = input.value.trim();
         if (!txt) return;
@@ -244,54 +290,53 @@
       sendBtn.onclick = send;
       input.addEventListener('keypress', e => { if (e.key === 'Enter') send(); });
 
-      // ユーザー強制退出（誰でも可能）＆過去メッセージ名をNoneに
+      // 強制退出＆メッセージの名前を None に
       partList.addEventListener('click', e => {
         if (e.target.classList.contains('kickBtn')) {
           const targetId = e.target.dataset.id;
-          usersRef.get(targetId).once((name) => {
+          usersRef.get(targetId).once(name => {
             usersRef.get(targetId).put(null);
             messagesRef.map().once((msg, msgId) => {
-              if (msg && msg.name === name) {
-                messagesRef.get(msgId).put({ name: 'None' });
-              }
+              if (msg && msg.name === name) messagesRef.get(msgId).put({ name: 'None' });
             });
           });
         }
       });
 
-      // コメント削除（誰でも可能）
+      // メッセージ削除
       chatArea.addEventListener('click', e => {
         if (e.target.classList.contains('delBtn')) {
           const msgId = e.target.dataset.id;
           messagesRef.get(msgId).put(null);
-          const msgDiv = e.target.closest('.msg');
-          if (msgDiv) msgDiv.remove();
+          e.target.closest('.msg').remove();
         }
       });
 
-      // ルーム削除ボタン
+      // ルーム削除
       deleteBtn.onclick = () => {
-        const roomRef = gun.get('rooms').get(roomName);
-        // まず参加者全員を退出させる
-        usersRef.map().once((name, id) => {
-          usersRef.get(id).put(null);
+        // 全参加者退出
+        roomRef.get('users').map().once((name, id) => {
+          if (name) roomRef.get('users').get(id).put(null);
         });
-        // メッセージを全件削除
-        messagesRef.map().once((msg, id) => {
-          messagesRef.get(id).put(null);
+        // 全メッセージ削除
+        roomRef.get('messages').map().once((msg, id) => {
+          if (msg) roomRef.get('messages').get(id).put(null);
         });
-        // ルームノード自体を削除
+        // 全映像データ削除（ユーザーごと）
+        roomRef.get('video').map().once((data, id) => {
+          if (data) roomRef.get('video').get(id).put(null);
+        });
+        // ルーム本体削除
         gun.get('rooms').get(roomName).put(null);
-        // ローカルUIもクリア
+
+        // UIクリア
         chatArea.innerHTML = '';
         partList.innerHTML = '';
         shown.clear();
-        // 初期画面に戻す
         chatApp.style.display = 'none';
         welcome.style.display = 'flex';
       };
 
-      // 離脱時に参加解除
       window.addEventListener('beforeunload', () => {
         usersRef.get(userId).put(null);
       });
