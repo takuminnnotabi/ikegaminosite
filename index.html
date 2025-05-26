@@ -4,9 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>先生に質問チャット</title>
+  <!-- ファビコンにロゴ画像を指定 -->
+  <link rel="icon" href="https://github.com/takuminnnotabi/ikegaminosite/blob/main/logo.jpg?raw=true" sizes="32x32" />
+  <link rel="shortcut icon" href="https://github.com/takuminnnotabi/ikegaminosite/blob/main/logo.jpg?raw=true" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0 }
     body { font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
+
+    /* ロゴ */
+    #logo {
+      width: 100px;
+      margin-bottom: 1rem;
+    }
 
     /* STEP1: Welcome */
     #welcome {
@@ -113,11 +122,35 @@
     }
     #videos video, #videos img {
       width: 100%; max-width: 200px; border: 1px solid #ccc; border-radius: 4px;
+      cursor: pointer;
     }
     #toggleCamBtn {
       width: 100%; padding: 8px; margin-bottom: 8px;
       background: #0078ff; color: #fff; border: none; border-radius: 4px;
       font-size: 14px; cursor: pointer;
+    }
+
+    /* スマホ専用表示 */
+    @media(max-width:699px) {
+      #chatApp { flex-direction: column; }
+      #sidebar {
+        order: -1;
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid #ddd;
+        padding: 8px;
+      }
+      #container {
+        order: 0;
+        flex: 1;
+      }
+      #toggleCamBtn {
+        font-size: 16px;
+      }
+      #videos video, #videos img {
+        max-width: 100%;
+        height: auto;
+      }
     }
   </style>
 </head>
@@ -125,6 +158,7 @@
 
   <!-- STEP1: ルーム作成 or 参加 -->
   <div id="welcome">
+    <img id="logo" src="https://github.com/takuminnnotabi/ikegaminosite/blob/main/logo.jpg?raw=true" alt="ロゴ" />
     <h2>はじめに</h2>
     <button class="btn" id="createBtn">ルームを作成</button>
     <button class="btn" id="joinBtn">ルームに参加</button>
@@ -148,7 +182,6 @@
       </div>
     </div>
     <div id="sidebar">
-      <!-- カメラ制御 -->
       <button id="toggleCamBtn">カメラオン</button>
       <ul id="videos">
         <li><video id="localVideo" autoplay muted playsinline></video></li>
@@ -183,7 +216,6 @@
     const roomTitle = document.getElementById('roomNameTitle');
     const deleteBtn = document.getElementById('deleteRoomBtn');
 
-    // STEP1
     document.getElementById('createBtn').onclick = () => openForm('create');
     document.getElementById('joinBtn').onclick   = () => openForm('join');
     function openForm(sel) {
@@ -193,7 +225,6 @@
       formTitle.textContent = sel === 'create' ? 'ルームを作成' : 'ルームに参加';
     }
 
-    // STEP2
     enterBtn.onclick = () => {
       userName = nameIn.value.trim();
       roomName = roomIn.value.trim();
@@ -202,7 +233,6 @@
       startChat();
     };
 
-    // STEP3
     function startChat() {
       form.style.display    = 'none';
       chatApp.style.display = 'flex';
@@ -221,7 +251,6 @@
 
       toggleCamBtn.onclick = () => {
         if (mediaStream) {
-          // 停止
           mediaStream.getTracks().forEach(t => t.stop());
           mediaStream = null;
           localVideo.srcObject = null;
@@ -229,14 +258,11 @@
           toggleCamBtn.textContent = 'カメラオン';
           videoRef.get(userId).put(null);
         } else {
-          // 開始
           navigator.mediaDevices.getUserMedia({ video: true, audio: false })
             .then(stream => {
               mediaStream = stream;
               localVideo.srcObject = stream;
               toggleCamBtn.textContent = 'カメラオフ';
-
-              // 500msごとに自分の映像を共有
               const canvas = document.createElement('canvas');
               intervalId = setInterval(() => {
                 if (!mediaStream) return;
@@ -253,15 +279,24 @@
         }
       };
 
-      // 相手の映像を受信
+      // 他ユーザーの映像受信（自分以外）
       videoRef.map().on((data, id) => {
         if (id !== userId) {
-          if (data && data.frame) {
-            remoteVideo.src = data.frame;
-          } else {
-            remoteVideo.src = '';
-          }
+          remoteVideo.src = data && data.frame ? data.frame : '';
         }
+      });
+
+      // クリック／タップでフルスクリーン切替
+      [localVideo, remoteVideo].forEach(elem => {
+        elem.addEventListener('click', () => {
+          if (document.fullscreenElement) {
+            document.exitFullscreen();
+          } else if (elem.requestFullscreen) {
+            elem.requestFullscreen();
+          } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen();
+          }
+        });
       });
 
       // 参加者同期
@@ -279,7 +314,6 @@
         }
       });
 
-      // 自分を参加者に登録
       usersRef.get(userId).put(userName);
       roomTitle.textContent = 'ルーム: ' + roomName;
 
@@ -295,7 +329,6 @@
         chatArea.scrollTop = chatArea.scrollHeight;
       });
 
-      // 入力有効化
       input.disabled   = false;
       sendBtn.disabled = false;
       sendBtn.onclick = () => {
@@ -306,18 +339,15 @@
       };
       input.addEventListener('keypress', e => { if (e.key === 'Enter') sendBtn.click(); });
 
-      // 強制退出＆名前をNoneに
+      // 強制退出＆メッセージ名を None に、映像も削除
       partList.addEventListener('click', e => {
         if (e.target.classList.contains('kickBtn')) {
           const targetId = e.target.dataset.id;
           usersRef.get(targetId).once(name => {
             usersRef.get(targetId).put(null);
             messagesRef.map().once((msg, msgId) => {
-              if (msg && msg.name === name) {
-                messagesRef.get(msgId).put({ name: 'None' });
-              }
+              if (msg && msg.name === name) messagesRef.get(msgId).put({ name: 'None' });
             });
-            // 相手の映像も消す
             videoRef.get(targetId).put(null);
           });
         }
@@ -334,26 +364,20 @@
 
       // ルーム削除
       deleteBtn.onclick = () => {
-        // 全参加者退出
         usersRef.map().once((_, id) => usersRef.get(id).put(null));
-        // 全メッセージ削除
         messagesRef.map().once((_, id) => messagesRef.get(id).put(null));
-        // 全映像削除
         videoRef.map().once((_, id) => videoRef.get(id).put(null));
-        // ルーム本体削除
         gun.get('rooms').get(roomName).put(null);
 
-        // UIクリア
         chatArea.innerHTML = '';
         partList.innerHTML = '';
-        document.getElementById('localVideo').srcObject = null;
-        document.getElementById('remoteVideo').src = '';
+        localVideo.srcObject = null;
+        remoteVideo.src = '';
         shown.clear();
         chatApp.style.display = 'none';
         welcome.style.display = 'flex';
       };
 
-      // 切断時に自分の参加と映像を解除
       window.addEventListener('beforeunload', () => {
         usersRef.get(userId).put(null);
         videoRef.get(userId).put(null);
