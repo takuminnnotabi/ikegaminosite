@@ -257,7 +257,12 @@
       videoRef.map().on((data, id) => {
         if (id !== userId) {
           if (data && data.frame) {
-            remoteVideo.src = data.frame;
+            // 安全性向上のため data:image/ 以外は表示しない
+            if (data.frame.startsWith('data:image/')) {
+              remoteVideo.src = data.frame;
+            } else {
+              remoteVideo.src = '';
+            }
           } else {
             remoteVideo.src = '';
           }
