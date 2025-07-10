@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>スタンプラリー</title>
+  <style>
+    :root {
+      --primary: #3f51b5;
+      --secondary: #ff4081;
+      --bg: #fafafa;
+      --card-bg: #fff;
+      --shadow: rgba(0, 0, 0, 0.1);
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      color: #333;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: var(--primary);
+      color: #fff;
+      padding: 12px 16px;
+      text-align: center;
+      font-size: 1.2rem;
+      box-shadow: 0 2px 4px var(--shadow);
+    }
+    #controls {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--card-bg);
+      box-shadow: 0 2px 4px var(--shadow);
+      border-radius: var(--radius);
+      margin: 12px;
+    }
+    #controls button {
+      background: var(--secondary);
+      border: none;
+      color: #fff;
+      padding: 10px 16px;
+      font-size: 1rem;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 4px var(--shadow);
+      transition: background 0.2s;
+      cursor: pointer;
+    }
+    #controls button:hover { background: #e91e63; }
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-rows: 30vh auto;
+    }
+    #map {
+      width: 100%;
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    section {
+      padding: 12px 16px;
+      overflow-y: auto;
+    }
+    .location-item {
+      background: var(--card-bg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      box-shadow: 0 1px 3px var(--shadow);
+    }
+    .location-item span { font-size: 0.9rem; }
+    .location-item .stamp-btn {
+      background: var(--primary);
+      padding: 6px 12px;
+      font-size: 0.9rem;
+      border-radius: var(--radius);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .location-item .stamp-btn:disabled { opacity: 0.5; cursor: default; }
+    #card-container {
+      position: relative;
+      width: 90%;
+      max-width: 400px;
+      margin: 12px auto;
+      display: none;
+    }
+    #card {
+      width: 100%;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 4px var(--shadow);
+    }
+    .stamp {
+      position: absolute;
+      width: 15%;
+      max-width: 60px;
+      transform: translate(-50%, -50%);
+      opacity: 0.85;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <header>スタンプラリー</header>
+  <main>
+    <div id="map"></div>
+    <section id="locations"></section>
+  </main>
+  <div id="card-container">
+    <img id="card" src="https://yohakuni.com/wp-content/uploads/2023/05/stampcard4-1.png" alt="スタンプラリーカード">
+  </div>
+  <script>
+    // 自動登録ロケーション
+    const locs = [
+      { id: 'loc1', name: '竹田城跡', lat: 35.30000, lng: 134.82889, stamped: false },
+      { id: 'loc2', name: '生野銀山', lat: 35.1716778, lng: 134.81965, stamped: false },
+      { id: 'loc3', name: '五色塚古墳', lat: 34.62972, lng: 135.04556, stamped: false }
+    ];
+    const RADIUS = 50;
+    const positions = [
+      { x: '20%', y: '20%' }, { x: '50%', y: '20%' }, { x: '80%', y: '20%' }
+    ];
+    const STAMP_IMG = 'https://www.sozailab.jp/db_img/sozai/16330/1ac9f5dcab3a87cb7ba0a2363681ecaf.png';
+
+    let map, currentMarker, watchId;
+
+    function initMap() {
+      if (!window.isSecureContext) {
+        alert('HTTPS または localhost で実行してください。');
+      }
+      map = new google.maps.Map(document.getElementById('map'), { zoom: 15, center: { lat: 35.3, lng: 134.82 } });
+      // マーカー配置
+      locs.forEach(l => {
+        l.marker = new google.maps.Marker({ position: { lat: l.lat, lng: l.lng }, map: map, title: l.name });
+      });
+      // 位置情報監視
+      if (navigator.geolocation) {
+        watchId = navigator.geolocation.watchPosition(onPosition, onError, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+      } else {
+        alert('位置情報を取得できません。');
+      }
+      renderList();
+    }
+
+    function onPosition(pos) {
+      const coords = pos.coords;
+      const p = { lat: coords.latitude, lng: coords.longitude };
+      if (!currentMarker) {
+        currentMarker = new google.maps.Marker({ position: p, map: map, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#3f51b5', fillOpacity: 0.6, strokeWeight: 2 } });
+      } else {
+        currentMarker.setPosition(p);
+      }
+      locs.forEach((l, i) => {
+        if (!l.stamped) {
+          const d = distance(coords.latitude, coords.longitude, l.lat, l.lng);
+          if (d <= RADIUS) {
+            l.stamped = true;
+            renderList();
+            renderStamps();
+            document.getElementById('card-container').style.display = 'block';
+            alert(`${l.name} に到着しました！スタンプを押しました。`);
+          }
+        }
+      });
+    }
+
+    function onError(err) {
+      alert('位置情報取得エラー: ' + err.message);
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+    }
+
+    function renderList() {
+      const c = document.getElementById('locations'); c.innerHTML = '';
+      locs.forEach((l, i) => {
+        const d = document.createElement('div'); d.className = 'location-item';
+        const name = document.createElement('span'); name.textContent = l.name;
+        const btn = document.createElement('button'); btn.className = 'stamp-btn';
+        btn.textContent = l.stamped ? '✅ 押印済み' : 'スタンプ待ち'; btn.disabled = true;
+        d.append(name, btn); c.appendChild(d);
+      });
+    }
+
+    function renderStamps() {
+      const container = document.getElementById('card-container');
+      // 既存スタンプ削除
+      container.querySelectorAll('.stamp').forEach(e => e.remove());
+      locs.forEach((l, i) => {
+        if (l.stamped) {
+          const img = document.createElement('img');
+          img.src = STAMP_IMG; img.className = 'stamp';
+          img.style.left = positions[i].x; img.style.top = positions[i].y;
+          container.appendChild(img);
+        }
+      });
+    }
+
+    function distance(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    window.initMap = initMap;
+  </script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB04-heQzWfpUDS5ffARVYdtAr9_nV_dBE&callback=initMap"></script>
+</body>
+</html>
